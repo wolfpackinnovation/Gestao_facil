@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CLIENT_ID</key>
+	<string>802298074107-gns1jtfm42dokkskjpltq8kt547493k1.apps.googleusercontent.com</string>
+	<key>REVERSED_CLIENT_ID</key>
+	<string>com.googleusercontent.apps.802298074107-gns1jtfm42dokkskjpltq8kt547493k1</string>
+	<key>API_KEY</key>
+	<string>AIzaSyAM8LC36d4qcrCAR1uephs3cJ5MmyjmZ1w</string>
+	<key>GCM_SENDER_ID</key>
+	<string>802298074107</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>com.wolfpack-innovation.GestaoFacil</string>
+	<key>PROJECT_ID</key>
+	<string>gestaofacil-2f34c</string>
+	<key>STORAGE_BUCKET</key>
+	<string>gestaofacil-2f34c.firebasestorage.app</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:802298074107:ios:ec7041a72577fecb0d315e</string>
+</dict>
+</plist>

@@ -8,7 +8,8 @@
     "scheme": "gestaofacil",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.wolfpack-innovation.GestaoFacil"
     },
     "android": {
       "adaptiveIcon": {
@@ -34,6 +35,16 @@
         }
       ]
     ],
+    "extra": {
+      "firebaseApiKey": "$FIREBASE_API_KEY",
+      "firebaseAuthDomain": "$FIREBASE_AUTH_DOMAIN",
+      "firebaseProjectId": "$FIREBASE_PROJECT_ID",
+      "firebaseStorageBucket": "$FIREBASE_STORAGE_BUCKET",
+      "firebaseMessagingSenderId": "$FIREBASE_MESSAGING_SENDER_ID",
+      "firebaseAppId": "$FIREBASE_APP_ID",
+      "firebaseMeasurementId": "$FIREBASE_MEASUREMENT_ID",
+      "firebaseUseEmulator": "$FIREBASE_USE_EMULATOR"
+    },
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true

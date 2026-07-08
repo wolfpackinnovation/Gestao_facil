@@ -1,0 +1,24 @@
+export const Collections = {
+  companies: 'companies',
+  users: 'users',
+  clients: 'clients',
+  suppliers: 'suppliers',
+  categories: 'categories',
+  products: 'products',
+  lossControls: 'lossControls',
+  sales: 'sales',
+  saleItems: 'saleItems',
+  purchases: 'purchases',
+  purchaseItems: 'purchaseItems',
+  cashRegisters: 'cashRegisters',
+  cashMovements: 'cashMovements',
+  receivables: 'receivables',
+  payables: 'payables',
+  tableModules: 'tableModules',
+  orders: 'orders',
+  orderItems: 'orderItems',
+  productions: 'productions',
+  productionConsumptions: 'productionConsumptions',
+} as const
+
+export type CollectionName = (typeof Collections)[keyof typeof Collections]

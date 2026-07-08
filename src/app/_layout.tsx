@@ -1,18 +1,50 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
+import { useState } from 'react';
+import { DarkTheme, DefaultTheme, ThemeProvider, Slot, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useColorScheme } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 
+import { ThemeModeProvider, useThemeMode } from '@/contexts/theme-mode';
+import { AuthProvider } from '@/contexts/auth';
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
-import AppTabs from '@/components/app-tabs';
+import Header from '@/components/header';
+import Sidebar from '@/components/sidebar';
 
 SplashScreen.preventAutoHideAsync();
 
-export default function TabLayout() {
-  const colorScheme = useColorScheme();
+function RootLayoutInner() {
+  const { resolvedTheme } = useThemeMode();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const pathname = usePathname();
+
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+    <ThemeProvider value={resolvedTheme === 'dark' ? DarkTheme : DefaultTheme}>
       <AnimatedSplashOverlay />
-      <AppTabs />
+      <View style={styles.root}>
+        {pathname !== '/notificacao' && pathname !== '/login' && pathname !== '/signup' && <Header onMenuPress={() => setSidebarOpen(true)} />}
+        <View style={styles.content}>
+          <Slot />
+        </View>
+        <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      </View>
     </ThemeProvider>
   );
 }
+
+export default function RootLayout() {
+  return (
+    <ThemeModeProvider>
+      <AuthProvider>
+        <RootLayoutInner />
+      </AuthProvider>
+    </ThemeModeProvider>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
+  content: {
+    flex: 1,
+  },
+});
