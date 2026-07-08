@@ -1,0 +1,250 @@
+# ========== COMPANIES ==========
+query ListCompanies {
+  companies @orderBy(createdAt: DESC)
+}
+
+query GetCompany(id: UUID!) {
+  company(id: id)
+}
+
+mutation CreateCompany(
+  $name: String!,
+  $cnpj: String!,
+  $email: String,
+  $phone: String,
+  $logoUrl: String,
+  $active: Boolean!,
+  $settings: String,
+  $subscriptionStatus: String
+) {
+  company_insert(data: {
+    name: $name,
+    cnpj: $cnpj,
+    email: $email,
+    phone: $phone,
+    logoUrl: $logoUrl,
+    active: $active,
+    settings: $settings,
+    subscriptionStatus: $subscriptionStatus
+  })
+}
+
+mutation UpdateCompany(
+  $id: UUID!,
+  $name: String,
+  $email: String,
+  $phone: String,
+  $logoUrl: String,
+  $active: Boolean,
+  $settings: String,
+  $subscriptionStatus: String
+) {
+  company_update(id: $id, data: {
+    name: $name,
+    email: $email,
+    phone: $phone,
+    logoUrl: $logoUrl,
+    active: $active,
+    settings: $settings,
+    subscriptionStatus: $subscriptionStatus
+  })
+}
+
+mutation DeleteCompany($id: UUID!) {
+  company_delete(id: $id)
+}
+
+# ========== CLIENTS ==========
+query ListClients($companyId: String!) {
+  clients @where(companyId: $companyId) @orderBy(name: ASC)
+}
+
+query GetClient(id: UUID!) {
+  client(id: id)
+}
+
+mutation CreateClient(
+  $companyId: String!,
+  $name: String!,
+  $email: String,
+  $phone: String,
+  $cpfCnpj: String,
+  $address: String,
+  $city: String,
+  $state: String,
+  $zipCode: String
+) {
+  client_insert(data: {
+    companyId: $companyId,
+    name: $name,
+    email: $email,
+    phone: $phone,
+    cpfCnpj: $cpfCnpj,
+    address: $address,
+    city: $city,
+    state: $state,
+    zipCode: $zipCode
+  })
+}
+
+mutation UpdateClient($id: UUID!, $name: String, $email: String, $phone: String, $address: String, $city: String, $state: String, $zipCode: String) {
+  client_update(id: $id, data: {
+    name: $name,
+    email: $email,
+    phone: $phone,
+    address: $address,
+    city: $city,
+    state: $state,
+    zipCode: $zipCode
+  })
+}
+
+mutation DeleteClient($id: UUID!) {
+  client_delete(id: $id)
+}
+
+# ========== USERS ==========
+query ListUsers($companyId: String!) {
+  users @where(companyId: $companyId) @orderBy(name: ASC)
+}
+
+mutation CreateUser($companyId: String!, $name: String!, $email: String!, $role: String!, $phone: String) {
+  user_insert(data: {
+    companyId: $companyId,
+    name: $name,
+    email: $email,
+    role: $role,
+    phone: $phone
+  })
+}
+
+# ========== PRODUCTS ==========
+query ListProducts($companyId: String!) {
+  products @where(companyId: $companyId) @orderBy(name: ASC)
+}
+
+mutation CreateProduct(
+  $companyId: String!,
+  $categoryId: String,
+  $name: String!,
+  $unit: String!,
+  $sku: String,
+  $price: Float!,
+  $costPrice: Float,
+  $stockQuantity: Float!,
+  $minStock: Float,
+  $metadata: String
+) {
+  product_insert(data: {
+    companyId: $companyId,
+    categoryId: $categoryId,
+    name: $name,
+    unit: $unit,
+    sku: $sku,
+    price: $price,
+    costPrice: $costPrice,
+    stockQuantity: $stockQuantity,
+    minStock: $minStock,
+    metadata: $metadata
+  })
+}
+
+mutation UpdateProductStock($id: UUID!, $stockQuantity: Float!) {
+  product_update(id: $id, data: { stockQuantity: $stockQuantity })
+}
+
+# ========== SALES ==========
+query ListSales($companyId: String!) {
+  sales @where(companyId: $companyId) @orderBy(createdAt: DESC)
+}
+
+mutation CreateSale(
+  $companyId: String!,
+  $number: String!,
+  $userId: String,
+  $clientId: String,
+  $totalAmount: Float!,
+  $paymentMethod: String,
+  $status: String
+) {
+  sale_insert(data: {
+    companyId: $companyId,
+    number: $number,
+    userId: $userId,
+    clientId: $clientId,
+    totalAmount: $totalAmount,
+    paymentMethod: $paymentMethod,
+    status: $status
+  })
+}
+
+# ========== SALE ITEMS ==========
+mutation CreateSaleItem(
+  $saleId: String!,
+  $productId: String!,
+  $quantity: Float!,
+  $unitPrice: Float!,
+  $subtotal: Float!,
+  $discount: Float
+) {
+  saleItem_insert(data: {
+    saleId: $saleId,
+    productId: $productId,
+    quantity: $quantity,
+    unitPrice: $unitPrice,
+    subtotal: $subtotal,
+    discount: $discount
+  })
+}
+
+# ========== SUPPLIERS ==========
+query ListSuppliers($companyId: String!) {
+  suppliers @where(companyId: $companyId) @orderBy(name: ASC)
+}
+
+# ========== CATEGORIES ==========
+query ListCategories($companyId: String!) {
+  categories @where(companyId: $companyId) @orderBy(name: ASC)
+}
+
+# ========== CASH REGISTERS ==========
+query ListCashRegisters($companyId: String!) {
+  cashRegisters @where(companyId: $companyId)
+}
+
+mutation CreateCashMovement(
+  $cashRegisterId: String!,
+  $userId: String!,
+  $type: String!,
+  $amount: Float!,
+  $balanceAfter: Float,
+  $description: String
+) {
+  cashMovement_insert(data: {
+    cashRegisterId: $cashRegisterId,
+    userId: $userId,
+    type: $type,
+    amount: $amount,
+    balanceAfter: $balanceAfter,
+    description: $description
+  })
+}
+
+# ========== RECEIVABLES / PAYABLES ==========
+query ListReceivables($companyId: String!) {
+  receivables @where(companyId: $companyId) @orderBy(dueDate: ASC)
+}
+
+query ListPayables($companyId: String!) {
+  payables @where(companyId: $companyId) @orderBy(dueDate: ASC)
+}
+
+# ========== ORDERS (TABLE MODULE) ==========
+query ListOrders($companyId: String!) {
+  orders @where(companyId: $companyId) @orderBy(createdAt: DESC)
+}
+
+# ========== PRODUCTIONS ==========
+query ListProductions($companyId: String!) {
+  productions @where(companyId: $companyId)
+}

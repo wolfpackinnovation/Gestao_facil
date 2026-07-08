@@ -20,7 +20,7 @@ function RootLayoutInner() {
     <ThemeProvider value={resolvedTheme === 'dark' ? DarkTheme : DefaultTheme}>
       <AnimatedSplashOverlay />
       <View style={styles.root}>
-        {pathname !== '/notificacao' && pathname !== '/login' && pathname !== '/signup' && <Header onMenuPress={() => setSidebarOpen(true)} />}
+        {pathname !== '/login' && pathname !== '/signup' && pathname !== '/notificacao' && pathname !== '/perfil' && <Header onMenuPress={() => setSidebarOpen(true)} />}
         <View style={styles.content}>
           <Slot />
         </View>

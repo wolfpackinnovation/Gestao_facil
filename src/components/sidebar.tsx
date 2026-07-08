@@ -1,9 +1,4 @@
-import { Pressable, StyleSheet, Dimensions, Alert } from 'react-native';
-import Animated, {
-  useAnimatedStyle,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
+import { View, Pressable, StyleSheet, Dimensions, Alert } from 'react-native';
 import { SymbolView } from 'expo-symbols';
 import { useRouter } from 'expo-router';
 
@@ -21,7 +16,6 @@ const sidebarItems = [
   { icon: 'scissors', label: 'Cortes', route: '/cortes' },
   { icon: 'chart.bar.fill', label: 'Relatórios', route: '/relatorios' },
   { icon: 'chart.line.downtrend.xyaxis', label: 'Controle de Perdas', route: '/controle-perdas' },
-  { icon: 'bell', label: 'Notificações', route: '/notificacao' },
   { icon: 'gearshape', label: 'Configuração', route: '/configuracao' },
 ];
 
@@ -49,25 +43,16 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
     ]);
   };
 
-  const overlayStyle = useAnimatedStyle(() => ({
-    opacity: withTiming(open ? 1 : 0, { duration: 200 }),
-    zIndex: open ? 100 : -1,
-  }));
-
-  const drawerStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: withSpring(open ? 0 : -SIDEBAR_WIDTH, { damping: 20 }) },
-    ],
-  }));
+  if (!open) return null;
 
   return (
     <>
-      <Animated.View style={[styles.overlay, overlayStyle]}>
+      <View style={styles.overlay}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-      </Animated.View>
+      </View>
 
-      <Animated.View
-        style={[styles.drawer, drawerStyle, { backgroundColor: colors.background }]}>
+      <View
+        style={[styles.drawer, { backgroundColor: colors.background }]}>
         <ThemedView style={styles.drawerHeader}>
           <ThemedText type="subtitle" style={styles.drawerTitle}>
             GestãoFácil
@@ -81,7 +66,12 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
           </Pressable>
         </ThemedView>
 
-        <ThemedView style={styles.profileSection}>
+        <Pressable
+          style={styles.profileSection}
+          onPress={() => {
+            onClose();
+            router.navigate('/perfil');
+          }}>
           <ThemedView type="backgroundSelected" style={styles.avatar}>
             <ThemedText type="title">
               {user?.displayName
@@ -95,7 +85,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
           <ThemedText type="small" themeColor="textSecondary">
             {user?.email ?? ''}
           </ThemedText>
-        </ThemedView>
+        </Pressable>
 
         <ThemedView style={styles.navSection}>
           {sidebarItems.map((item) => (
@@ -133,7 +123,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
             </ThemedText>
           </Pressable>
         </ThemedView>
-      </Animated.View>
+      </View>
     </>
   );
 }

@@ -19,7 +19,7 @@ export default function Header({ onMenuPress }: HeaderProps) {
   const router = useRouter();
 
   return (
-    <ThemedView style={[styles.header, { paddingTop: insets.top + Spacing.two }]}>
+    <ThemedView style={[styles.header, { paddingTop: insets.top }]}>
       <Pressable onPress={onMenuPress} style={styles.menuButton}>
         <SymbolView
           tintColor={colors.text}
@@ -49,7 +49,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: 'rgba(128,128,128,0.2)',
   },

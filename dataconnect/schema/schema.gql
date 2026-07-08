@@ -1,0 +1,244 @@
+scalar Date
+
+type Company
+  @table {
+  id: UUID! @default(expr: "gen_random_uuid()")
+  name: String!
+  cnpj: String! @unique
+  email: String
+  phone: String
+  logoUrl: String
+  active: Boolean! @default(value: true)
+  settings: String
+  subscriptionStatus: String
+  createdAt: Date! @default(expr: "now()")
+  updatedAt: Date! @default(expr: "now()")
+}
+
+type User
+  @table {
+  id: UUID! @default(expr: "gen_random_uuid()")
+  companyId: String!
+  name: String!
+  email: String! @unique
+  role: String!
+  phone: String
+  createdAt: Date! @default(expr: "now()")
+  updatedAt: Date! @default(expr: "now()")
+}
+
+type Client
+  @table {
+  id: UUID! @default(expr: "gen_random_uuid()")
+  companyId: String!
+  name: String!
+  email: String
+  phone: String
+  cpfCnpj: String
+  address: String
+  city: String
+  state: String
+  zipCode: String
+  createdAt: Date! @default(expr: "now()")
+  updatedAt: Date! @default(expr: "now()")
+}
+
+type Supplier
+  @table {
+  id: UUID! @default(expr: "gen_random_uuid()")
+  companyId: String!
+  name: String!
+  cnpj: String
+  contact: String
+  createdAt: Date! @default(expr: "now()")
+  updatedAt: Date! @default(expr: "now()")
+}
+
+type Category
+  @table {
+  id: UUID! @default(expr: "gen_random_uuid()")
+  companyId: String!
+  name: String!
+  createdAt: Date! @default(expr: "now()")
+  updatedAt: Date! @default(expr: "now()")
+}
+
+type Product
+  @table {
+  id: UUID! @default(expr: "gen_random_uuid()")
+  companyId: String!
+  categoryId: String
+  name: String!
+  unit: String!
+  sku: String
+  price: Float!
+  costPrice: Float
+  stockQuantity: Float! @default(value: 0)
+  minStock: Float
+  metadata: String
+  createdAt: Date! @default(expr: "now()")
+  updatedAt: Date! @default(expr: "now()")
+}
+
+type LossControl
+  @table {
+  id: UUID! @default(expr: "gen_random_uuid()")
+  companyId: String!
+  productId: String!
+  quantity: Float!
+  reason: String
+  createdAt: Date! @default(expr: "now()")
+  updatedAt: Date! @default(expr: "now()")
+}
+
+type Sale
+  @table {
+  id: UUID! @default(expr: "gen_random_uuid()")
+  companyId: String!
+  number: String!
+  userId: String
+  clientId: String
+  totalAmount: Float!
+  paymentMethod: String
+  status: String
+  createdAt: Date! @default(expr: "now()")
+  updatedAt: Date! @default(expr: "now()")
+}
+
+type SaleItem
+  @table {
+  id: UUID! @default(expr: "gen_random_uuid()")
+  saleId: String!
+  productId: String!
+  quantity: Float!
+  unitPrice: Float!
+  subtotal: Float!
+  discount: Float
+  createdAt: Date! @default(expr: "now()")
+  updatedAt: Date! @default(expr: "now()")
+}
+
+type Purchase
+  @table {
+  id: UUID! @default(expr: "gen_random_uuid()")
+  companyId: String!
+  supplierId: String!
+  totalAmount: Float!
+  status: String
+  createdAt: Date! @default(expr: "now()")
+  updatedAt: Date! @default(expr: "now()")
+}
+
+type PurchaseItem
+  @table {
+  id: UUID! @default(expr: "gen_random_uuid()")
+  purchaseId: String!
+  productId: String!
+  quantity: Float!
+  unitCost: Float!
+  subtotal: Float!
+  createdAt: Date! @default(expr: "now()")
+  updatedAt: Date! @default(expr: "now()")
+}
+
+type CashRegister
+  @table {
+  id: UUID! @default(expr: "gen_random_uuid()")
+  companyId: String!
+  name: String!
+  currentBalance: Float! @default(value: 0)
+  isOpen: Boolean! @default(value: false)
+  createdAt: Date! @default(expr: "now()")
+  updatedAt: Date! @default(expr: "now()")
+}
+
+type CashMovement
+  @table {
+  id: UUID! @default(expr: "gen_random_uuid()")
+  cashRegisterId: String!
+  userId: String!
+  type: String!
+  amount: Float!
+  balanceAfter: Float
+  description: String
+  createdAt: Date! @default(expr: "now()")
+  updatedAt: Date! @default(expr: "now()")
+}
+
+type Receivable
+  @table {
+  id: UUID! @default(expr: "gen_random_uuid()")
+  companyId: String!
+  saleId: String
+  amount: Float!
+  dueDate: Date!
+  status: String
+  createdAt: Date! @default(expr: "now()")
+  updatedAt: Date! @default(expr: "now()")
+}
+
+type Payable
+  @table {
+  id: UUID! @default(expr: "gen_random_uuid()")
+  companyId: String!
+  purchaseId: String
+  amount: Float!
+  dueDate: Date!
+  status: String
+  createdAt: Date! @default(expr: "now()")
+  updatedAt: Date! @default(expr: "now()")
+}
+
+type TableModule
+  @table {
+  id: UUID! @default(expr: "gen_random_uuid()")
+  companyId: String!
+  number: Int!
+  status: String
+  createdAt: Date! @default(expr: "now()")
+  updatedAt: Date! @default(expr: "now()")
+}
+
+type Order
+  @table {
+  id: UUID! @default(expr: "gen_random_uuid()")
+  companyId: String!
+  number: String!
+  tableId: String
+  userId: String
+  status: String
+  createdAt: Date! @default(expr: "now()")
+  updatedAt: Date! @default(expr: "now()")
+}
+
+type OrderItem
+  @table {
+  id: UUID! @default(expr: "gen_random_uuid()")
+  orderId: String!
+  productId: String!
+  quantity: Float!
+  unitPrice: Float!
+  subtotal: Float!
+  createdAt: Date! @default(expr: "now()")
+  updatedAt: Date! @default(expr: "now()")
+}
+
+type Production
+  @table {
+  id: UUID! @default(expr: "gen_random_uuid()")
+  companyId: String!
+  productId: String!
+  quantity: Float!
+  createdAt: Date! @default(expr: "now()")
+  updatedAt: Date! @default(expr: "now()")
+}
+
+type ProductionConsumption
+  @table {
+  id: UUID! @default(expr: "gen_random_uuid()")
+  productionId: String!
+  productId: String!
+  quantity: Float!
+  createdAt: Date! @default(expr: "now()")
+  updatedAt: Date! @default(expr: "now()")
+}

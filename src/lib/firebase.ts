@@ -1,7 +1,8 @@
 import { initializeApp, getApps } from 'firebase/app'
 import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore'
-import { getAuth, connectAuthEmulator } from 'firebase/auth'
+import { getAuth, initializeAuth, getReactNativePersistence, connectAuthEmulator } from 'firebase/auth'
 import { getStorage, connectStorageEmulator } from 'firebase/storage'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import Constants from 'expo-constants'
 
 const extra = Constants.expoConfig?.extra ?? {}
@@ -29,7 +30,9 @@ function getFirebase() {
 
   const app = initializeApp(firebaseConfig)
   const db = getFirestore(app)
-  const auth = getAuth(app)
+  const auth = initializeAuth(app, {
+    persistence: getReactNativePersistence(AsyncStorage),
+  })
   const storage = getStorage(app)
 
   if (__DEV__ && extra.firebaseUseEmulator === 'true') {

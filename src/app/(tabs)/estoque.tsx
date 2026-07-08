@@ -314,7 +314,7 @@ export default function EstoqueScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
         <ThemedView style={styles.header}>
           <ThemedView style={styles.headerLeft}>
             <ThemedText style={styles.headerEmoji}>📦</ThemedText>
@@ -497,14 +497,13 @@ export default function EstoqueScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: 'center',
-    flexDirection: 'row',
   },
   safeArea: {
     flex: 1,
     paddingHorizontal: Spacing.four,
-    paddingBottom: BottomTabInset + Spacing.three,
     maxWidth: MaxContentWidth,
+    alignSelf: 'center',
+    width: '100%',
   },
   header: {
     flexDirection: 'row',
@@ -551,7 +550,6 @@ const styles = StyleSheet.create({
   },
   listContent: {
     gap: Spacing.three,
-    paddingBottom: Spacing.four,
   },
   card: {
     borderRadius: Spacing.four,

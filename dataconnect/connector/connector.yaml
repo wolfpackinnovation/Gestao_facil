@@ -1,0 +1,5 @@
+connectorId: "gestaofacil-connector"
+generate:
+  javascript:
+    sdkDir: "../src/dataconnect"
+    package: "@gestaofacil/dataconnect"

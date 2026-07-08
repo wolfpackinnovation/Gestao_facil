@@ -1,0 +1,13 @@
+specVersion: "v1"
+serviceId: "gestaofacil"
+location: "us-central1"
+schema:
+  source: "./schema"
+  datasource:
+    postgresql:
+      database: "gestaofacil"
+      cloudSql:
+        instanceId: "gestaofacil-db"
+connector:
+  connectorDirs:
+    - "./connector"
