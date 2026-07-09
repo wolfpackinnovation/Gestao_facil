@@ -8,7 +8,8 @@ import {
   signOut,
   type User,
 } from 'firebase/auth'
-import { auth } from '@/lib/firebase'
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'
+import { auth, db } from '@/lib/firebase'
 
 type AuthContextType = {
   user: User | null
@@ -21,12 +22,30 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | null>(null)
 
+async function ensureUserDoc(firebaseUser: User): Promise<void> {
+  const ref = doc(db, 'users', firebaseUser.uid)
+  const snap = await getDoc(ref)
+  if (!snap.exists()) {
+    await setDoc(ref, {
+      companyId: firebaseUser.uid,
+      name: firebaseUser.displayName ?? firebaseUser.email?.split('@')[0] ?? '',
+      email: firebaseUser.email,
+      role: 'owner',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    })
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      if (firebaseUser) {
+        ensureUserDoc(firebaseUser).catch(() => {})
+      }
       setUser(firebaseUser)
       setLoading(false)
     })

@@ -1,7 +1,11 @@
 import { useState, useCallback } from 'react';
-import { Pressable, StyleSheet, ScrollView } from 'react-native';
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect, router } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -27,6 +31,7 @@ interface DashboardData {
 
 export default function HomeScreen() {
   const theme = useTheme();
+  const router = useRouter();
   const { user } = useAuth();
   const [data, setData] = useState<DashboardData>({
     todaySales: 0,
@@ -76,62 +81,39 @@ export default function HomeScreen() {
       emoji: '💰',
       label: 'Vendas Hoje',
       value: formatCurrency(data.todaySales),
-      route: '/(tabs)/vendas' as const,
     },
     {
       emoji: '📦',
       label: 'Produtos',
       value: `${data.totalProducts}`,
-      route: '/(tabs)/estoque' as const,
     },
     {
       emoji: '👥',
       label: 'Clientes',
       value: `${data.totalClients}`,
-      route: '/(tabs)/clientes' as const,
     },
     {
       emoji: '💵',
       label: 'Saldo em Caixa',
       value: formatCurrency(data.totalCash),
-      route: '/(tabs)/caixa' as const,
     },
     {
       emoji: '⚠️',
       label: 'Estoque Baixo',
       value: `${data.lowStockProducts}`,
-      route: '/(tabs)/estoque' as const,
       alert: data.lowStockProducts > 0,
     },
-  ];
-
-  const quickActions = [
-    { emoji: '📦', label: 'Novo Produto', route: '/(tabs)/estoque' as const },
-    { emoji: '💳', label: 'Nova Venda', route: '/(tabs)/vendas' as const },
-    { emoji: '👤', label: 'Novo Cliente', route: '/(tabs)/clientes' as const },
-    { emoji: '💵', label: 'Mov. Caixa', route: '/(tabs)/caixa' as const },
   ];
 
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-          <ThemedView style={styles.greeting}>
-            <ThemedText style={styles.greetingEmoji}>👋</ThemedText>
-            <ThemedView>
-              <ThemedText type="title" style={styles.greetingTitle}>GestaoFacil</ThemedText>
-              <ThemedText type="default" themeColor="textSecondary">
-                {user?.email ?? 'Bem-vindo!'}
-              </ThemedText>
-            </ThemedView>
-          </ThemedView>
-
           <ThemedText type="code" style={styles.sectionTitle}>Resumo</ThemedText>
           <ThemedView style={styles.cardsGrid}>
             {cards.map((card, index) => (
               <Pressable
                 key={index}
-                onPress={() => router.push(card.route)}
                 style={[
                   styles.card,
                   { backgroundColor: theme.backgroundElement },
@@ -149,16 +131,13 @@ export default function HomeScreen() {
 
           <ThemedText type="code" style={styles.sectionTitle}>Ações Rápidas</ThemedText>
           <ThemedView style={styles.actionsRow}>
-            {quickActions.map((action, index) => (
-              <Pressable
-                key={index}
-                onPress={() => router.push(action.route)}
-                style={[styles.actionCard, { backgroundColor: theme.backgroundElement }]}
-              >
-                <ThemedText style={styles.actionEmoji}>{action.emoji}</ThemedText>
-                <ThemedText type="small" style={{ textAlign: 'center' }}>{action.label}</ThemedText>
-              </Pressable>
-            ))}
+            <Pressable
+              onPress={() => router.push('/nova-venda')}
+              style={[styles.actionCard, { backgroundColor: theme.backgroundElement }]}
+            >
+              <ThemedText style={styles.actionEmoji}>💳</ThemedText>
+              <ThemedText type="small" style={{ textAlign: 'center' }}>Nova Venda</ThemedText>
+            </Pressable>
           </ThemedView>
         </ScrollView>
       </SafeAreaView>
@@ -179,18 +158,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     gap: Spacing.four,
-  },
-  greeting: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.three,
-  },
-  greetingEmoji: {
-    fontSize: 40,
-  },
-  greetingTitle: {
-    fontSize: 32,
-    lineHeight: 36,
   },
   sectionTitle: {
     textTransform: 'uppercase',

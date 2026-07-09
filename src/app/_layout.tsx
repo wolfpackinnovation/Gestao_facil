@@ -11,6 +11,29 @@ import Sidebar from '@/components/sidebar';
 
 SplashScreen.preventAutoHideAsync();
 
+const hideHeaderRoutes = new Set(['/login', '/signup', '/notificacao', '/perfil', '/produto-detalhe', '/cliente-detalhe', '/nova-venda'])
+
+const routeTitles: Record<string, string> = {
+  'index': 'Início',
+  'estoque': 'Estoque',
+  'vendas': 'Vendas',
+  'caixa': 'Caixa',
+  'clientes': 'Clientes',
+  'configuracao': 'Configuração',
+  'cortes': 'Cortes',
+  'relatorios': 'Relatórios',
+  'controle-perdas': 'Controle de Perdas',
+  'nova-venda': 'Nova Venda',
+  'mais': 'Mais',
+  'explore': 'Explorar',
+}
+
+function getRouteTitle(pathname: string): string {
+  const segments = pathname.split('/').filter(Boolean)
+  const last = segments[segments.length - 1] || 'index'
+  return routeTitles[last] ?? 'GestãoFácil'
+}
+
 function RootLayoutInner() {
   const { resolvedTheme } = useThemeMode();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -20,7 +43,7 @@ function RootLayoutInner() {
     <ThemeProvider value={resolvedTheme === 'dark' ? DarkTheme : DefaultTheme}>
       <AnimatedSplashOverlay />
       <View style={styles.root}>
-        {pathname !== '/login' && pathname !== '/signup' && pathname !== '/notificacao' && pathname !== '/perfil' && <Header onMenuPress={() => setSidebarOpen(true)} />}
+        {!hideHeaderRoutes.has(pathname) && <Header onMenuPress={() => setSidebarOpen(true)} title={getRouteTitle(pathname)} />}
         <View style={styles.content}>
           <Slot />
         </View>

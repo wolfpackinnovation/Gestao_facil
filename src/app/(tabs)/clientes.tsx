@@ -11,7 +11,7 @@ import {
   TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -35,6 +35,7 @@ const emptyForm = {
 
 export default function ClientesScreen() {
   const theme = useTheme();
+  const router = useRouter();
   const { user } = useAuth();
   const [clients, setClients] = useState<Client[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
@@ -143,45 +144,14 @@ export default function ClientesScreen() {
 
   function renderClient({ item }: { item: Client }) {
     return (
-      <Pressable onPress={() => openEdit(item)}>
-        <ThemedView type="backgroundElement" style={styles.card}>
-          <ThemedView style={styles.cardHeader}>
-            <ThemedText style={styles.cardName}>{item.name}</ThemedText>
-          </ThemedView>
-
-          <ThemedView style={styles.cardBody}>
-            {item.email ? (
-              <ThemedView style={styles.cardRow}>
-                <ThemedText type="small" themeColor="textSecondary">Email:</ThemedText>
-                <ThemedText type="smallBold">{item.email}</ThemedText>
-              </ThemedView>
-            ) : null}
-            {item.phone ? (
-              <ThemedView style={styles.cardRow}>
-                <ThemedText type="small" themeColor="textSecondary">Telefone:</ThemedText>
-                <ThemedText type="smallBold">{item.phone}</ThemedText>
-              </ThemedView>
-            ) : null}
-            {item.cpfCnpj ? (
-              <ThemedView style={styles.cardRow}>
-                <ThemedText type="small" themeColor="textSecondary">CPF/CNPJ:</ThemedText>
-                <ThemedText type="smallBold">{item.cpfCnpj}</ThemedText>
-              </ThemedView>
-            ) : null}
-            {item.city ? (
-              <ThemedView style={styles.cardRow}>
-                <ThemedText type="small" themeColor="textSecondary">Cidade:</ThemedText>
-                <ThemedText type="smallBold">{item.city}{item.state ? `/${item.state}` : ''}</ThemedText>
-              </ThemedView>
-            ) : null}
-          </ThemedView>
-
-          <Pressable
-            onPress={() => confirmDelete(item.id!, item.name)}
-            style={styles.deleteButton}
-          >
-            <ThemedText type="small" style={{ color: '#ef4444' }}>Excluir</ThemedText>
-          </Pressable>
+      <Pressable onPress={() => router.push('/cliente-detalhe?id=' + item.id as any)}>
+        <ThemedView style={styles.dataRow}>
+          <ThemedText numberOfLines={1} style={styles.colNome}>{item.name}</ThemedText>
+          <ThemedText numberOfLines={1} style={styles.colEmail}>{item.email || '---'}</ThemedText>
+          <ThemedText style={styles.colPhone}>{item.phone || '---'}</ThemedText>
+          <ThemedText style={styles.colCidade}>
+            {item.city ? `${item.city}${item.state ? `/${item.state}` : ''}` : '---'}
+          </ThemedText>
         </ThemedView>
       </Pressable>
     );
@@ -218,20 +188,17 @@ export default function ClientesScreen() {
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
         <ThemedView style={styles.header}>
-          <ThemedText style={styles.headerEmoji}>👥</ThemedText>
-          <ThemedText type="title" style={styles.headerTitle}>Clientes</ThemedText>
+          <TextInput
+            style={[styles.searchInput, { color: theme.text, backgroundColor: theme.backgroundElement }]}
+            placeholder="Buscar cliente..."
+            placeholderTextColor={theme.textSecondary}
+            value={search}
+            onChangeText={setSearch}
+          />
           <Pressable onPress={openNew} style={[styles.addButton, { backgroundColor: theme.text }]}>
             <ThemedText style={[styles.addButtonText, { color: theme.background }]}>+ Novo</ThemedText>
           </Pressable>
         </ThemedView>
-
-        <TextInput
-          style={[styles.searchInput, { color: theme.text, backgroundColor: theme.backgroundElement }]}
-          placeholder="Buscar cliente..."
-          placeholderTextColor={theme.textSecondary}
-          value={search}
-          onChangeText={setSearch}
-        />
 
         {clients.length === 0 ? (
           <ThemedView style={styles.emptyState}>
@@ -242,14 +209,20 @@ export default function ClientesScreen() {
             </ThemedText>
           </ThemedView>
         ) : (
-          <FlatList
-            data={clients}
-            keyExtractor={(item) => item.id!}
-            renderItem={renderClient}
-            contentContainerStyle={styles.listContent}
-            showsVerticalScrollIndicator={false}
-            style={styles.list}
-          />
+          <ThemedView style={styles.tableWrapper}>
+            <ThemedView style={styles.tableHeader}>
+              <ThemedText type="smallBold" style={styles.colNome}>Nome</ThemedText>
+              <ThemedText type="smallBold" style={styles.colEmail}>Email</ThemedText>
+              <ThemedText type="smallBold" style={styles.colPhone}>Telefone</ThemedText>
+              <ThemedText type="smallBold" style={styles.colCidade}>Cidade</ThemedText>
+            </ThemedView>
+            <FlatList
+              data={clients}
+              keyExtractor={(item) => item.id!}
+              renderItem={renderClient}
+              showsVerticalScrollIndicator={false}
+            />
+          </ThemedView>
         )}
       </SafeAreaView>
 
@@ -317,25 +290,47 @@ export default function ClientesScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-   safeArea: { flex: 1, paddingHorizontal: Spacing.four, maxWidth: MaxContentWidth, alignSelf: 'center', width: '100%' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: Spacing.three },
-  headerEmoji: { fontSize: 32 },
-  headerTitle: { fontSize: 32, lineHeight: 36 },
+  safeArea: { flex: 1, paddingHorizontal: Spacing.four, maxWidth: MaxContentWidth, alignSelf: 'center', width: '100%' },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingVertical: Spacing.three,
+  },
+  searchInput: {
+    flex: 1,
+    borderRadius: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Platform.OS === 'ios' ? Spacing.three : Spacing.two,
+    fontSize: 16,
+  },
   addButton: { paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, borderRadius: Spacing.two },
   addButtonText: { fontWeight: '600', fontSize: 14 },
-  searchInput: { borderRadius: Spacing.two, paddingHorizontal: Spacing.three, paddingVertical: Platform.OS === 'ios' ? Spacing.three : Spacing.two, fontSize: 16, marginBottom: Spacing.three },
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing.three, paddingHorizontal: Spacing.four },
   emptyEmoji: { fontSize: 48 },
   emptyTitle: { textAlign: 'center' },
   emptyText: { textAlign: 'center' },
-  list: { flex: 1 },
-  listContent: { gap: Spacing.three },
-  card: { borderRadius: Spacing.four, padding: Spacing.three, gap: Spacing.two },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  cardName: { flex: 1, fontWeight: '600' },
-  cardBody: { gap: Spacing.one },
-  cardRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  deleteButton: { alignSelf: 'flex-end', paddingHorizontal: Spacing.two, paddingVertical: Spacing.half },
+  tableWrapper: { flex: 1 },
+  tableHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    borderBottomWidth: 2,
+    borderBottomColor: '#cccccc',
+  },
+  dataRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#eeeeee',
+  },
+  colNome: { flex: 1.5, fontSize: 13, fontWeight: '500', paddingRight: Spacing.one },
+  colEmail: { flex: 1.5, fontSize: 12, paddingRight: Spacing.one },
+  colPhone: { width: 100, fontSize: 12, paddingRight: Spacing.one },
+  colCidade: { flex: 1, fontSize: 12, textAlign: 'right' },
   modalContainer: { flex: 1 },
   modalSafe: { flex: 1 },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.four, paddingVertical: Spacing.three },

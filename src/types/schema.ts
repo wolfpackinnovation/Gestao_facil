@@ -165,3 +165,16 @@ export interface ProductionConsumption extends BaseEntity {
   productId: string
   quantity: number
 }
+
+export interface Inventory extends BaseEntity {
+  companyId: string
+  name: string
+  category: string
+  unit: string
+  quantity: number
+  costPrice: number
+  stockQuantity: number
+  minStock: number
+  expiryDate: string
+  supplier: string
+}

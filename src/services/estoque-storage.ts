@@ -1,47 +1,77 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { createWithId, getAll, get as dbGet, update as dbUpdate, remove, where } from './db'
+import { Collections } from './collections'
 
-export type UnidadeMedida = 'un' | 'kg' | 'g' | 'L' | 'mL';
+export type UnidadeMedida = 'un' | 'kg' | 'g' | 'L' | 'mL'
 
 export interface Produto {
-  id: string;
-  nome: string;
-  categoria: string;
-  unidade: UnidadeMedida;
-  quantidade: number;
-  custo: number;
-  estoqueAtual: number;
-  estoqueMinimo: number;
-  dataValidade: string;
-  fornecedor: string;
-  createdAt: string;
+  id: string
+  companyId: string
+  codigo: string
+  nome: string
+  categoria: string
+  unidade: UnidadeMedida
+  quantidade: number
+  custo: number
+  estoqueAtual: number
+  estoqueMinimo: number
+  dataValidade: string
+  fornecedor: string
+  createdAt: string
 }
 
-const STORAGE_KEY = '@gestaofacil:produtos';
+function fromFirestoreDoc(doc: any): Produto {
+  return {
+    id: doc.id,
+    companyId: doc.companyId,
+    codigo: doc.codigo ?? '',
+    nome: doc.nome,
+    categoria: doc.categoria,
+    unidade: doc.unidade,
+    quantidade: doc.quantidade,
+    custo: doc.custo,
+    estoqueAtual: doc.estoqueAtual,
+    estoqueMinimo: doc.estoqueMinimo,
+    dataValidade: doc.dataValidade,
+    fornecedor: doc.fornecedor,
+    createdAt: doc.createdAt?.toDate?.()?.toISOString() ?? doc.createdAt ?? new Date().toISOString(),
+  }
+}
 
-export async function getProdutos(): Promise<Produto[]> {
+export async function getProduto(id: string): Promise<Produto | null> {
   try {
-    const data = await AsyncStorage.getItem(STORAGE_KEY);
-    return data ? JSON.parse(data) : [];
+    const doc = await dbGet<any>(Collections.inventory, id)
+    return doc ? fromFirestoreDoc(doc) : null
   } catch {
-    return [];
+    return null
+  }
+}
+
+export async function getProdutos(companyId: string): Promise<Produto[]> {
+  try {
+    const docs = await getAll<any>(
+      Collections.inventory,
+      where('companyId', '==', companyId)
+    )
+    return docs.map(fromFirestoreDoc)
+  } catch {
+    return []
   }
 }
 
 export async function saveProduto(produto: Produto): Promise<void> {
-  const produtos = await getProdutos();
-  const index = produtos.findIndex((p) => p.id === produto.id);
-  if (index >= 0) {
-    produtos[index] = produto;
+  const { id, createdAt, ...data } = produto
+  const existing = await dbGet<any>(Collections.inventory, id)
+  if (existing) {
+    await dbUpdate<any>(Collections.inventory, id, data)
   } else {
-    produtos.push(produto);
+    await createWithId<any>(Collections.inventory, id, data)
   }
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(produtos));
 }
 
 export async function deleteProduto(id: string): Promise<void> {
-  const produtos = await getProdutos();
-  const filtered = produtos.filter((p) => p.id !== id);
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+  try {
+    await remove(Collections.inventory, id)
+  } catch {}
 }
 
 export const CATEGORIAS = [

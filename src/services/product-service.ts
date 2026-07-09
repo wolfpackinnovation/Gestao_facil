@@ -1,4 +1,4 @@
-import { create, getAll, get, update, remove, where, orderBy, limit, type QueryConstraint } from './db'
+import { create, getAll, get, update, remove, where, limit, type QueryConstraint } from './db'
 import { Collections } from './collections'
 import type { Product } from '@/types/schema'
 
@@ -14,7 +14,6 @@ export async function listProducts(companyId: string, max = 100): Promise<Produc
   return getAll<Product>(
     Collections.products,
     where('companyId', '==', companyId),
-    orderBy('name', 'asc'),
     limit(max)
   )
 }
@@ -27,12 +26,15 @@ export async function deleteProduct(id: string): Promise<void> {
   return remove(Collections.products, id)
 }
 
+export async function listAllProducts(): Promise<Product[]> {
+  return getAll<Product>(Collections.products)
+}
+
 export async function listProductsByCategory(companyId: string, categoryId: string): Promise<Product[]> {
   return getAll<Product>(
     Collections.products,
     where('companyId', '==', companyId),
-    where('categoryId', '==', categoryId),
-    orderBy('name', 'asc')
+    where('categoryId', '==', categoryId)
   )
 }
 

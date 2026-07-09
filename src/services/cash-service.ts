@@ -1,4 +1,4 @@
-import { create, getAll, get, update, remove, where, orderBy, limit } from './db'
+import { create, getAll, get, update, remove, where, limit } from './db'
 import { Collections } from './collections'
 import type { CashRegister, CashMovement } from '@/types/schema'
 
@@ -13,8 +13,7 @@ export async function getCashRegister(id: string): Promise<CashRegister | null> 
 export async function listCashRegisters(companyId: string): Promise<CashRegister[]> {
   return getAll<CashRegister>(
     Collections.cashRegisters,
-    where('companyId', '==', companyId),
-    orderBy('name', 'asc')
+    where('companyId', '==', companyId)
   )
 }
 
@@ -30,12 +29,10 @@ export async function createCashMovement(data: Omit<CashMovement, 'id' | 'create
   return create<CashMovement>(Collections.cashMovements, data)
 }
 
-export async function listCashMovements(cashRegisterId: string, max = 50): Promise<CashMovement[]> {
+export async function listCashMovements(cashRegisterId: string): Promise<CashMovement[]> {
   return getAll<CashMovement>(
     Collections.cashMovements,
-    where('cashRegisterId', '==', cashRegisterId),
-    orderBy('createdAt', 'desc'),
-    limit(max)
+    where('cashRegisterId', '==', cashRegisterId)
   )
 }
 

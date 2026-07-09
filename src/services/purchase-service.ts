@@ -1,4 +1,4 @@
-import { create, getAll, get, update, remove, where, orderBy, limit } from './db'
+import { create, getAll, get, update, remove, where, limit } from './db'
 import { Collections } from './collections'
 import type { Purchase, PurchaseItem } from '@/types/schema'
 
@@ -21,7 +21,6 @@ export async function listPurchases(companyId: string, max = 50): Promise<Purcha
   return getAll<Purchase>(
     Collections.purchases,
     where('companyId', '==', companyId),
-    orderBy('createdAt', 'desc'),
     limit(max)
   )
 }

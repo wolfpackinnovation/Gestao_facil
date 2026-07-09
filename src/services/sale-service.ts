@@ -1,4 +1,4 @@
-import { create, getAll, get, update, remove, where, orderBy, limit, Timestamp } from './db'
+import { create, getAll, get, update, remove, where, limit, Timestamp } from './db'
 import { Collections } from './collections'
 import type { Sale, SaleItem } from '@/types/schema'
 
@@ -35,7 +35,6 @@ export async function listSales(companyId: string, max = 50): Promise<Sale[]> {
   return getAll<Sale>(
     Collections.sales,
     where('companyId', '==', companyId),
-    orderBy('createdAt', 'desc'),
     limit(max)
   )
 }
@@ -51,18 +50,19 @@ export async function deleteSale(id: string): Promise<void> {
 export async function getSaleItems(saleId: string): Promise<SaleItem[]> {
   return getAll<SaleItem>(
     Collections.saleItems,
-    where('saleId', '==', saleId),
-    orderBy('createdAt', 'asc')
+    where('saleId', '==', saleId)
   )
 }
 
 export async function getTodaySales(companyId: string): Promise<Sale[]> {
+  const sales = await getAll<Sale>(
+    Collections.sales,
+    where('companyId', '==', companyId)
+  )
   const startOfDay = new Date()
   startOfDay.setHours(0, 0, 0, 0)
-  return getAll<Sale>(
-    Collections.sales,
-    where('companyId', '==', companyId),
-    where('createdAt', '>=', Timestamp.fromDate(startOfDay)),
-    orderBy('createdAt', 'desc')
-  )
+  const startTimestamp = Timestamp.fromDate(startOfDay)
+  return sales
+    .filter((s) => s.createdAt && s.createdAt.toMillis() >= startTimestamp.toMillis())
+    .sort((a, b) => (b.createdAt?.toMillis() ?? 0) - (a.createdAt?.toMillis() ?? 0))
 }

@@ -1,4 +1,4 @@
-import { create, getAll, get, update, remove, where, orderBy } from './db'
+import { create, getAll, get, update, remove, where } from './db'
 import { Collections } from './collections'
 import type { Supplier } from '@/types/schema'
 
@@ -13,8 +13,7 @@ export async function getSupplier(id: string): Promise<Supplier | null> {
 export async function listSuppliers(companyId: string): Promise<Supplier[]> {
   return getAll<Supplier>(
     Collections.suppliers,
-    where('companyId', '==', companyId),
-    orderBy('name', 'asc')
+    where('companyId', '==', companyId)
   )
 }
 

@@ -19,6 +19,7 @@ export const Collections = {
   orderItems: 'orderItems',
   productions: 'productions',
   productionConsumptions: 'productionConsumptions',
+  inventory: 'inventory',
 } as const
 
 export type CollectionName = (typeof Collections)[keyof typeof Collections]

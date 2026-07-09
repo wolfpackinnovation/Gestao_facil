@@ -11,9 +11,10 @@ import { useTheme } from '@/hooks/use-theme';
 
 type HeaderProps = {
   onMenuPress: () => void;
+  title: string;
 };
 
-export default function Header({ onMenuPress }: HeaderProps) {
+export default function Header({ onMenuPress, title }: HeaderProps) {
   const colors = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -29,7 +30,7 @@ export default function Header({ onMenuPress }: HeaderProps) {
       </Pressable>
 
       <ThemedText type="smallBold" style={styles.brandText}>
-        GestãoFácil
+        {title}
       </ThemedText>
 
       <Pressable onPress={() => router.navigate('/notificacao')} style={styles.notificationButton}>

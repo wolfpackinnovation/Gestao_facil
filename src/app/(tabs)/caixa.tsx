@@ -206,10 +206,7 @@ export default function CaixaScreen() {
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
-        <ThemedView style={styles.header}>
-          <ThemedText style={styles.headerEmoji}>💵</ThemedText>
-          <ThemedText type="title" style={styles.headerTitle}>Caixa</ThemedText>
-        </ThemedView>
+        <ThemedText style={styles.headerEmoji}>💵</ThemedText>
 
         {/* New Register Input */}
         <ThemedView style={styles.newRegisterRow}>
@@ -374,9 +371,7 @@ export default function CaixaScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
    safeArea: { flex: 1, paddingHorizontal: Spacing.four, maxWidth: MaxContentWidth, alignSelf: 'center', width: '100%' },
-  header: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, paddingVertical: Spacing.three },
-  headerEmoji: { fontSize: 32 },
-  headerTitle: { fontSize: 32, lineHeight: 36 },
+  headerEmoji: { fontSize: 32, paddingVertical: Spacing.three },
   newRegisterRow: { flexDirection: 'row', gap: Spacing.two, marginBottom: Spacing.three },
   input: { borderWidth: 1, borderColor: 'transparent', borderRadius: Spacing.two, paddingHorizontal: Spacing.three, paddingVertical: Platform.OS === 'ios' ? Spacing.three : Spacing.two, fontSize: 16 },
   inputError: { borderColor: '#ef4444' },

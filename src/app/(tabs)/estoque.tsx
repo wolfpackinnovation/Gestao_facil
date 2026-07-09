@@ -11,12 +11,13 @@ import {
   TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useAuth } from '@/contexts/auth';
 import {
   getProdutos,
   saveProduto,
@@ -33,6 +34,7 @@ function generateId(): string {
 }
 
 const emptyForm = {
+  codigo: '',
   nome: '',
   categoria: CATEGORIAS[0],
   unidade: 'un' as UnidadeMedida,
@@ -46,6 +48,9 @@ const emptyForm = {
 
 export default function EstoqueScreen() {
   const theme = useTheme();
+  const router = useRouter();
+  const { user } = useAuth();
+  const companyId = user?.uid ?? '';
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -54,9 +59,10 @@ export default function EstoqueScreen() {
   const [now] = useState(() => Date.now());
 
   const loadProdutos = useCallback(async () => {
-    const data = await getProdutos();
+    if (!companyId) return;
+    const data = await getProdutos(companyId);
     setProdutos(data);
-  }, []);
+  }, [companyId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -65,8 +71,9 @@ export default function EstoqueScreen() {
   );
 
   function openNew() {
+    const nextCode = 'P' + String(produtos.length + 1).padStart(3, '0');
     setEditingId(null);
-    setForm({ ...emptyForm });
+    setForm({ ...emptyForm, codigo: nextCode });
     setErrors({});
     setModalVisible(true);
   }
@@ -74,6 +81,7 @@ export default function EstoqueScreen() {
   function openEdit(produto: Produto) {
     setEditingId(produto.id);
     setForm({
+      codigo: produto.codigo,
       nome: produto.nome,
       categoria: produto.categoria,
       unidade: produto.unidade,
@@ -117,6 +125,8 @@ export default function EstoqueScreen() {
     if (!validate()) return;
     const produto: Produto = {
       id: editingId ?? generateId(),
+      companyId,
+      codigo: form.codigo.trim(),
       nome: form.nome.trim(),
       categoria: form.categoria,
       unidade: form.unidade,
@@ -175,102 +185,21 @@ export default function EstoqueScreen() {
 
   function renderProduto({ item }: { item: Produto }) {
     const low = isLowStock(item);
-    const nearExpiry = isExpiringSoon(item);
     const expired = isExpired(item);
+    const status = expired ? 'vencido' : low ? 'baixo' : '';
 
     return (
-      <Pressable onPress={() => openEdit(item)}>
-        <ThemedView
-          type="backgroundElement"
-          style={[styles.card, (low || expired) && styles.cardAlert]}
-        >
-          <ThemedView style={styles.cardHeader}>
-            <ThemedText type="default" style={styles.cardName}>
-              {item.nome}
-            </ThemedText>
-            <ThemedView style={styles.unitBadge}>
-              <ThemedText style={styles.unitText}>{item.unidade}</ThemedText>
-            </ThemedView>
-          </ThemedView>
-
-          <ThemedView style={styles.cardBody}>
-            <ThemedView style={styles.cardRow}>
-              <ThemedText type="small" themeColor="textSecondary">
-                Categoria:
-              </ThemedText>
-              <ThemedText type="smallBold">{item.categoria}</ThemedText>
-            </ThemedView>
-
-            <ThemedView style={styles.cardRow}>
-              <ThemedText type="small" themeColor="textSecondary">
-                Estoque:
-              </ThemedText>
-              <ThemedText type="smallBold">
-                {item.estoqueAtual} {item.unidade}
-                {item.estoqueMinimo > 0 && (
-                  <ThemedText type="small" themeColor="textSecondary">
-                    {' '}
-                    (mín: {item.estoqueMinimo})
-                  </ThemedText>
-                )}
-              </ThemedText>
-            </ThemedView>
-
-            <ThemedView style={styles.cardRow}>
-              <ThemedText type="small" themeColor="textSecondary">
-                Custo:
-              </ThemedText>
-              <ThemedText type="smallBold">{formatCurrency(item.custo)}</ThemedText>
-            </ThemedView>
-
-            <ThemedView style={styles.cardRow}>
-              <ThemedText type="small" themeColor="textSecondary">
-                Validade:
-              </ThemedText>
-              <ThemedText type="smallBold">{item.dataValidade}</ThemedText>
-            </ThemedView>
-
-            {item.fornecedor ? (
-              <ThemedView style={styles.cardRow}>
-                <ThemedText type="small" themeColor="textSecondary">
-                  Fornecedor:
-                </ThemedText>
-                <ThemedText type="smallBold">{item.fornecedor}</ThemedText>
-              </ThemedView>
-            ) : null}
-          </ThemedView>
-
-          <ThemedView style={styles.cardFooter}>
-            {expired && (
-              <ThemedView type="backgroundElement" style={styles.badgeDanger}>
-                <ThemedText type="small" style={styles.badgeDangerText}>
-                  Vencido
-                </ThemedText>
-              </ThemedView>
-            )}
-            {nearExpiry && !expired && (
-              <ThemedView type="backgroundElement" style={styles.badgeWarning}>
-                <ThemedText type="small" style={styles.badgeWarningText}>
-                  Próximo ao vencimento
-                </ThemedText>
-              </ThemedView>
-            )}
-            {low && (
-              <ThemedView type="backgroundElement" style={styles.badgeWarning}>
-                <ThemedText type="small" style={styles.badgeWarningText}>
-                  Estoque baixo
-                </ThemedText>
-              </ThemedView>
-            )}
-            <Pressable
-              onPress={() => confirmDelete(item.id, item.nome)}
-              style={styles.deleteButton}
-            >
-              <ThemedText type="small" style={{ color: '#ef4444' }}>
-                Excluir
-              </ThemedText>
-            </Pressable>
-          </ThemedView>
+      <Pressable onPress={() => router.push('/produto-detalhe?id=' + item.id as any)}>
+        <ThemedView style={[styles.dataRow, status === 'vencido' && styles.rowVencido]}>
+          <ThemedText numberOfLines={1} style={styles.colCodigo}>{item.codigo}</ThemedText>
+          <ThemedText numberOfLines={1} style={styles.colNome}>{item.nome}</ThemedText>
+          <ThemedText style={[styles.colEstoque, low && { color: '#ef4444' }]}>
+            {item.estoqueAtual}{item.unidade}
+          </ThemedText>
+          <ThemedText style={styles.colCusto}>{formatCurrency(item.custo)}</ThemedText>
+          <ThemedText style={[styles.colValidade, expired && { color: '#ef4444' }]}>
+            {item.dataValidade}
+          </ThemedText>
         </ThemedView>
       </Pressable>
     );
@@ -316,12 +245,6 @@ export default function EstoqueScreen() {
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
         <ThemedView style={styles.header}>
-          <ThemedView style={styles.headerLeft}>
-            <ThemedText style={styles.headerEmoji}>📦</ThemedText>
-            <ThemedText type="title" style={styles.headerTitle}>
-              Estoque
-            </ThemedText>
-          </ThemedView>
           <Pressable onPress={openNew} style={[styles.addButton, { backgroundColor: theme.text }]}>
             <ThemedText style={[styles.addButtonText, { color: theme.background }]}>
               + Novo
@@ -340,13 +263,21 @@ export default function EstoqueScreen() {
             </ThemedText>
           </ThemedView>
         ) : (
-          <FlatList
-            data={produtos}
-            keyExtractor={(item) => item.id}
-            renderItem={renderProduto}
-            contentContainerStyle={styles.listContent}
-            showsVerticalScrollIndicator={false}
-          />
+          <ThemedView style={styles.tableWrapper}>
+            <ThemedView style={styles.tableHeader}>
+              <ThemedText type="smallBold" style={styles.colCodigo}>Código</ThemedText>
+              <ThemedText type="smallBold" style={styles.colNome}>Nome</ThemedText>
+              <ThemedText type="smallBold" style={styles.colEstoque}>Estq</ThemedText>
+              <ThemedText type="smallBold" style={styles.colCusto}>Custo</ThemedText>
+              <ThemedText type="smallBold" style={styles.colValidade}>Validade</ThemedText>
+            </ThemedView>
+            <FlatList
+              data={produtos}
+              keyExtractor={(item) => item.id}
+              renderItem={renderProduto}
+              showsVerticalScrollIndicator={false}
+            />
+          </ThemedView>
         )}
       </SafeAreaView>
 
@@ -511,18 +442,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: Spacing.three,
   },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  headerEmoji: {
-    fontSize: 32,
-  },
-  headerTitle: {
-    fontSize: 32,
-    lineHeight: 36,
-  },
   addButton: {
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
@@ -560,61 +479,56 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#f59e0b',
   },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  cardName: {
+  tableWrapper: {
     flex: 1,
-    fontWeight: '600',
   },
-  unitBadge: {
-    paddingHorizontal: Spacing.two,
-    paddingVertical: Spacing.half,
-    borderRadius: Spacing.one,
+  tableHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    borderBottomWidth: 2,
+    borderBottomColor: '#cccccc',
   },
-  unitText: {
+  dataRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#eeeeee',
+  },
+  rowVencido: {
+    backgroundColor: '#fef2f2',
+  },
+  colCodigo: {
+    width: 55,
     fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  cardBody: {
-    gap: Spacing.one,
-  },
-  cardRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  cardFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-    marginTop: Spacing.one,
-  },
-  badgeDanger: {
-    paddingHorizontal: Spacing.two,
-    paddingVertical: Spacing.half,
-    borderRadius: Spacing.one,
-  },
-  badgeDangerText: {
-    color: '#ef4444',
     fontWeight: '600',
+    paddingRight: Spacing.one,
   },
-  badgeWarning: {
-    paddingHorizontal: Spacing.two,
-    paddingVertical: Spacing.half,
-    borderRadius: Spacing.one,
+  colNome: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '500',
+    paddingRight: Spacing.one,
   },
-  badgeWarningText: {
-    color: '#f59e0b',
-    fontWeight: '600',
+  colEstoque: {
+    width: 60,
+    fontSize: 12,
+    textAlign: 'right',
+    paddingRight: Spacing.one,
   },
-  deleteButton: {
-    marginLeft: 'auto',
-    paddingHorizontal: Spacing.two,
-    paddingVertical: Spacing.half,
+  colCusto: {
+    width: 65,
+    fontSize: 12,
+    textAlign: 'right',
+    paddingRight: Spacing.one,
+  },
+  colValidade: {
+    width: 70,
+    fontSize: 11,
+    textAlign: 'right',
   },
   // Modal
   modalContainer: {

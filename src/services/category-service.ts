@@ -1,4 +1,4 @@
-import { create, getAll, update, remove, where, orderBy } from './db'
+import { create, getAll, update, remove, where } from './db'
 import { Collections } from './collections'
 import type { Category } from '@/types/schema'
 
@@ -9,8 +9,7 @@ export async function createCategory(data: Omit<Category, 'id' | 'createdAt' | '
 export async function listCategories(companyId: string): Promise<Category[]> {
   return getAll<Category>(
     Collections.categories,
-    where('companyId', '==', companyId),
-    orderBy('name', 'asc')
+    where('companyId', '==', companyId)
   )
 }
 

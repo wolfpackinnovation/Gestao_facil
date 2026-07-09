@@ -1,4 +1,4 @@
-import { create, getAll, get, update, remove, where, orderBy, limit } from './db'
+import { create, getAll, get, update, remove, where } from './db'
 import { Collections } from './collections'
 import type { Client } from '@/types/schema'
 
@@ -13,8 +13,7 @@ export async function getClient(id: string): Promise<Client | null> {
 export async function listClients(companyId: string): Promise<Client[]> {
   return getAll<Client>(
     Collections.clients,
-    where('companyId', '==', companyId),
-    orderBy('name', 'asc')
+    where('companyId', '==', companyId)
   )
 }
 
@@ -24,6 +23,10 @@ export async function updateClient(id: string, data: Partial<Omit<Client, 'id' |
 
 export async function deleteClient(id: string): Promise<void> {
   return remove(Collections.clients, id)
+}
+
+export async function listAllClients(): Promise<Client[]> {
+  return getAll<Client>(Collections.clients)
 }
 
 export async function searchClients(companyId: string, searchTerm: string): Promise<Client[]> {
