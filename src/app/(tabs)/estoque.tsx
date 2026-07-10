@@ -40,6 +40,8 @@ const emptyForm = {
   unidade: 'un' as UnidadeMedida,
   quantidade: '',
   custo: '',
+  margemLucro: '',
+  quebra: '',
   estoqueAtual: '',
   estoqueMinimo: '',
   dataValidade: '',
@@ -86,7 +88,9 @@ export default function EstoqueScreen() {
       categoria: produto.categoria,
       unidade: produto.unidade,
       quantidade: produto.quantidade.toString(),
-      custo: produto.custo.toString(),
+      custo: Math.round(produto.custo * 100).toString(),
+      margemLucro: '',
+      quebra: '',
       estoqueAtual: produto.estoqueAtual.toString(),
       estoqueMinimo: produto.estoqueMinimo.toString(),
       dataValidade: produto.dataValidade,
@@ -108,6 +112,12 @@ export default function EstoqueScreen() {
       newErrors.quantidade = 'Informe uma quantidade válida';
     if (!form.custo || isNaN(Number(form.custo)) || Number(form.custo) <= 0)
       newErrors.custo = 'Informe um custo válido';
+    if (!form.margemLucro || isNaN(Number(form.margemLucro)) || Number(form.margemLucro) < 0)
+      newErrors.margemLucro = 'Informe uma margem válida';
+    if (form.quebra && (isNaN(Number(form.quebra)) || Number(form.quebra) < 0))
+      newErrors.quebra = 'Valor inválido';
+    const margemNum = Number(form.margemLucro) || 0;
+    const quebraNum = Number(form.quebra) || 0;
     if (!form.estoqueAtual || isNaN(Number(form.estoqueAtual)) || Number(form.estoqueAtual) < 0)
       newErrors.estoqueAtual = 'Informe o estoque atual';
     if (
@@ -121,6 +131,15 @@ export default function EstoqueScreen() {
     return Object.keys(newErrors).length === 0;
   }
 
+  function calcPrecoVenda(): number {
+    const custo = Number(form.custo) / 100;
+    const margem = Number(form.margemLucro) || 0;
+    const quebra = Number(form.quebra) || 0;
+    if (!custo || custo <= 0) return 0;
+    const custoAjustado = custo * (1 + quebra / 100);
+    return custoAjustado * (1 + margem / 100);
+  }
+
   async function handleSave() {
     if (!validate()) return;
     const produto: Produto = {
@@ -131,7 +150,8 @@ export default function EstoqueScreen() {
       categoria: form.categoria,
       unidade: form.unidade,
       quantidade: Number(form.quantidade),
-      custo: Number(form.custo),
+      custo: Number(form.custo) / 100,
+      precoVenda: calcPrecoVenda(),
       estoqueAtual: Number(form.estoqueAtual),
       estoqueMinimo: Number(form.estoqueMinimo) || 0,
       dataValidade: form.dataValidade,
@@ -205,6 +225,16 @@ export default function EstoqueScreen() {
     );
   }
 
+  function formatBRL(cents: string): string {
+    const digits = cents.replace(/\D/g, '');
+    if (!digits) return '';
+    const padded = digits.padStart(3, '0');
+    const intPart = padded.slice(0, -2).replace(/^0+/, '') || '0';
+    const decPart = padded.slice(-2);
+    const intFormatted = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    return `${intFormatted},${decPart}`;
+  }
+
   function renderInput(
     label: string,
     field: string,
@@ -212,26 +242,80 @@ export default function EstoqueScreen() {
       keyboardType?: 'default' | 'numeric' | 'decimal-pad';
       placeholder?: string;
       multiline?: boolean;
+      prefix?: string;
+      suffix?: string;
+      numeric?: boolean;
+      type?: 'text' | 'currency' | 'date';
     }
   ) {
+    const adornment = (text: string, position: 'left' | 'right') => (
+      <ThemedView
+        style={[
+          styles.inputAdornment,
+          {
+            backgroundColor: theme.backgroundElement,
+            borderTopLeftRadius: position === 'left' ? Spacing.two - 1 : 0,
+            borderBottomLeftRadius: position === 'left' ? Spacing.two - 1 : 0,
+            borderTopRightRadius: position === 'right' ? Spacing.two - 1 : 0,
+            borderBottomRightRadius: position === 'right' ? Spacing.two - 1 : 0,
+          },
+        ]}
+      >
+        <ThemedText type="default" themeColor="textSecondary">
+          {text}
+        </ThemedText>
+      </ThemedView>
+    );
+
+    const displayValue =
+      options?.type === 'currency' ? formatBRL((form as any)[field]) : (form as any)[field];
+
+    function handleChange(value: string) {
+      if (options?.type === 'currency') {
+        value = value.replace(/\D/g, '');
+      } else if (options?.type === 'date') {
+        const digits = value.replace(/\D/g, '').slice(0, 8);
+        const parts: string[] = [];
+        if (digits.length > 0) parts.push(digits.slice(0, 2));
+        if (digits.length > 2) parts.push(digits.slice(2, 4));
+        if (digits.length > 4) parts.push(digits.slice(4, 8));
+        value = parts.join('/');
+      } else if (options?.numeric) {
+        value = value.replace(/[^0-9.,]/g, '');
+      }
+      updateField(field, value);
+    }
+
     return (
       <ThemedView style={styles.fieldGroup}>
         <ThemedText type="smallBold" style={styles.fieldLabel}>
           {label}
         </ThemedText>
-        <TextInput
+        <ThemedView
           style={[
-            styles.input,
-            { color: theme.text, backgroundColor: theme.background },
-            errors[field] && styles.inputError,
+            styles.inputRow,
+            {
+              borderColor: errors[field] ? '#ef4444' : theme.textSecondary + '55',
+              borderWidth: StyleSheet.hairlineWidth,
+              borderRadius: Spacing.two,
+            },
           ]}
-          value={(form as any)[field]}
-          onChangeText={(v) => updateField(field, v)}
-          placeholderTextColor={theme.textSecondary}
-          placeholder={options?.placeholder}
-          keyboardType={options?.keyboardType ?? 'default'}
-          multiline={options?.multiline}
-        />
+        >
+          {options?.prefix && adornment(options.prefix, 'left')}
+          <TextInput
+            style={[
+              styles.input,
+              { color: theme.text, backgroundColor: theme.background, borderWidth: 0 },
+            ]}
+            value={displayValue}
+            onChangeText={handleChange}
+            placeholderTextColor={theme.textSecondary}
+            placeholder={options?.placeholder}
+            keyboardType={options?.keyboardType ?? 'default'}
+            multiline={options?.multiline}
+          />
+          {options?.suffix && adornment(options.suffix, 'right')}
+        </ThemedView>
         {errors[field] && (
           <ThemedText type="small" style={{ color: '#ef4444' }}>
             {errors[field]}
@@ -376,13 +460,55 @@ export default function EstoqueScreen() {
                   {renderInput('Quantidade *', 'quantidade', {
                     keyboardType: 'decimal-pad',
                     placeholder: 'Ex: 1',
+                    numeric: true,
                   })}
                 </ThemedView>
                 <ThemedView style={styles.halfField}>
-                  {renderInput('Custo (R$) *', 'custo', {
+                  {renderInput('Custo *', 'custo', {
                     keyboardType: 'decimal-pad',
-                    placeholder: 'Ex: 45.90',
+                    placeholder: 'Ex: 45,90',
+                    prefix: 'R$',
+                    type: 'currency',
                   })}
+                </ThemedView>
+              </ThemedView>
+
+              <ThemedView style={styles.rowFields}>
+                <ThemedView style={styles.halfField}>
+                  {renderInput('Margem de Lucro *', 'margemLucro', {
+                    keyboardType: 'decimal-pad',
+                    placeholder: 'Ex: 30',
+                    suffix: '%',
+                    numeric: true,
+                  })}
+                </ThemedView>
+                <ThemedView style={styles.halfField}>
+                  {renderInput('Quebra', 'quebra', {
+                    keyboardType: 'decimal-pad',
+                    placeholder: 'Ex: 5',
+                    suffix: '%',
+                    numeric: true,
+                  })}
+                </ThemedView>
+              </ThemedView>
+
+              <ThemedView style={styles.fieldGroup}>
+                <ThemedText type="smallBold" style={styles.fieldLabel}>
+                  Preço de Venda (R$)
+                </ThemedText>
+                <ThemedView
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: theme.backgroundElement,
+                      justifyContent: 'center',
+                      paddingVertical: Platform.OS === 'ios' ? Spacing.three : Spacing.two,
+                    },
+                  ]}
+                >
+                  <ThemedText type="default" style={{ fontWeight: '600' }}>
+                    {formatCurrency(calcPrecoVenda())}
+                  </ThemedText>
                 </ThemedView>
               </ThemedView>
 
@@ -391,18 +517,21 @@ export default function EstoqueScreen() {
                   {renderInput('Estoque Atual *', 'estoqueAtual', {
                     keyboardType: 'numeric',
                     placeholder: 'Ex: 15',
+                    numeric: true,
                   })}
                 </ThemedView>
                 <ThemedView style={styles.halfField}>
                   {renderInput('Estoque Mínimo', 'estoqueMinimo', {
                     keyboardType: 'numeric',
                     placeholder: 'Ex: 5',
+                    numeric: true,
                   })}
                 </ThemedView>
               </ThemedView>
 
               {renderInput('Data de Validade *', 'dataValidade', {
                 placeholder: 'DD/MM/AAAA',
+                type: 'date',
               })}
 
               {renderInput('Fornecedor (opcional)', 'fornecedor', {
@@ -563,12 +692,18 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   input: {
-    borderWidth: 1,
-    borderColor: 'transparent',
-    borderRadius: Spacing.two,
+    flex: 1,
     paddingHorizontal: Spacing.three,
     paddingVertical: Platform.OS === 'ios' ? Spacing.three : Spacing.two,
     fontSize: 16,
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  inputAdornment: {
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Platform.OS === 'ios' ? Spacing.three : Spacing.two,
   },
   inputError: {
     borderColor: '#ef4444',

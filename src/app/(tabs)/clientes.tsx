@@ -11,46 +11,95 @@ import {
   TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import * as ClientService from '@/services/client-service';
+import { getAllSales, updateSale } from '@/services/sale-service';
+import { createPayment, getClientPayments } from '@/services/payment-service';
 import type { Client } from '@/types/schema';
 
 import { useAuth } from '@/contexts/auth';
+import { formatCurrency, formatCurrencyInput, parseCurrencyInput } from '@/utils/format';
+
+function generateClientCode(clients: Client[]): string {
+  const max = clients.reduce((max, c) => {
+    const num = parseInt((c.codigo ?? 'C0').slice(1), 10);
+    return num > max ? num : max;
+  }, 0);
+  return `C${String(max + 1).padStart(3, '0')}`;
+}
 
 const emptyForm = {
+  codigo: '',
   name: '',
   email: '',
   phone: '',
-  cpfCnpj: '',
   address: '',
+  addressNumber: '',
   city: '',
   state: '',
-  zipCode: '',
 };
 
 export default function ClientesScreen() {
   const theme = useTheme();
-  const router = useRouter();
   const { user } = useAuth();
   const [clients, setClients] = useState<Client[]>([]);
+  const [debts, setDebts] = useState<Record<string, number>>({});
+  const [detailClient, setDetailClient] = useState<Client | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ ...emptyForm });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [search, setSearch] = useState('');
+  const [receiveModal, setReceiveModal] = useState(false);
+  const [receiveAmount, setReceiveAmount] = useState('');
+  const [transactions, setTransactions] = useState<{ type: 'compra' | 'recebimento'; description: string; amount: number; date: Date }[]>([]);
 
   const companyId = user?.uid ?? '';
 
+  async function loadTransactions(client: Client) {
+    const [sales, payments] = await Promise.all([
+      getAllSales(companyId),
+      getClientPayments(companyId, client.id!),
+    ]);
+    const purchaseTx = sales
+      .filter((s) => s.clientId === client.id && s.paymentMethod === 'fiado')
+      .map((s) => ({
+        type: 'compra' as const,
+        description: `Venda ${s.number}`,
+        amount: s.totalAmount,
+        date: s.createdAt?.toDate() ?? new Date(),
+      }));
+    const paymentTx = payments.map((p) => ({
+      type: 'recebimento' as const,
+      description: 'Recebimento',
+      amount: p.amount,
+      date: p.createdAt?.toDate() ?? new Date(),
+    }));
+    const combined = [...purchaseTx, ...paymentTx].sort((a, b) => b.date.getTime() - a.date.getTime());
+    setTransactions(combined);
+  }
+
   const loadClients = useCallback(async () => {
-    const data = search
-      ? await ClientService.searchClients(companyId, search)
-      : await ClientService.listClients(companyId);
-    setClients(data);
+    const [clientsData, allSales] = await Promise.all([
+      search
+        ? ClientService.searchClients(companyId, search)
+        : ClientService.listClients(companyId),
+      getAllSales(companyId),
+    ]);
+    setClients(clientsData);
+
+    const debtMap: Record<string, number> = {};
+    for (const sale of allSales) {
+      if (sale.paymentMethod === 'fiado' && sale.status !== 'concluída' && sale.clientId) {
+        debtMap[sale.clientId] = (debtMap[sale.clientId] ?? 0) + (sale.totalAmount - (sale.paidAmount ?? 0));
+      }
+    }
+    setDebts(debtMap);
   }, [companyId, search]);
 
   useFocusEffect(
@@ -61,7 +110,7 @@ export default function ClientesScreen() {
 
   function openNew() {
     setEditingId(null);
-    setForm({ ...emptyForm });
+    setForm({ ...emptyForm, codigo: generateClientCode(clients) });
     setErrors({});
     setModalVisible(true);
   }
@@ -69,14 +118,14 @@ export default function ClientesScreen() {
   function openEdit(client: Client) {
     setEditingId(client.id ?? null);
     setForm({
+      codigo: client.codigo ?? '',
       name: client.name,
       email: client.email ?? '',
       phone: client.phone ?? '',
-      cpfCnpj: client.cpfCnpj ?? '',
       address: client.address ?? '',
+      addressNumber: client.addressNumber ?? '',
       city: client.city ?? '',
       state: client.state ?? '',
-      zipCode: client.zipCode ?? '',
     });
     setErrors({});
     setModalVisible(true);
@@ -96,22 +145,21 @@ export default function ClientesScreen() {
 
   async function handleSave() {
     if (!validate()) return;
-    const data = {
+    const data: Record<string, any> = {
       companyId,
       name: form.name.trim(),
-      email: form.email.trim() || undefined,
-      phone: form.phone.trim() || undefined,
-      cpfCnpj: form.cpfCnpj.trim() || undefined,
-      address: form.address.trim() || undefined,
-      city: form.city.trim() || undefined,
-      state: form.state.trim() || undefined,
-      zipCode: form.zipCode.trim() || undefined,
     };
+    if (form.codigo.trim()) data.codigo = form.codigo.trim();
+    const optionalFields = ['email', 'phone', 'address', 'addressNumber', 'city', 'state'] as const;
+    for (const field of optionalFields) {
+      const val = form[field].trim();
+      if (val) data[field] = val;
+    }
 
     if (editingId) {
       await ClientService.updateClient(editingId, data);
     } else {
-      await ClientService.createClient(data);
+      await ClientService.createClient(data as any);
     }
     await loadClients();
     closeModal();
@@ -131,6 +179,42 @@ export default function ClientesScreen() {
     ]);
   }
 
+  async function handleReceivePayment() {
+    if (!detailClient?.id) return;
+    const amount = parseCurrencyInput(receiveAmount);
+    if (amount <= 0) {
+      Alert.alert('Valor inválido', 'Digite um valor válido.');
+      return;
+    }
+
+    const allSales = await getAllSales(companyId);
+    const pendingSales = allSales
+      .filter((s) => s.clientId === detailClient.id && s.paymentMethod === 'fiado' && s.status !== 'concluída')
+      .sort((a, b) => (a.createdAt?.toMillis() ?? 0) - (b.createdAt?.toMillis() ?? 0));
+
+    let remaining = amount;
+    for (const sale of pendingSales) {
+      if (remaining <= 0) break;
+      const owed = sale.totalAmount - (sale.paidAmount ?? 0);
+      if (owed <= 0) continue;
+      if (remaining >= owed) {
+        await updateSale(sale.id!, { status: 'concluída', paidAmount: sale.totalAmount });
+        remaining -= owed;
+      } else {
+        await updateSale(sale.id!, { paidAmount: (sale.paidAmount ?? 0) + remaining });
+        remaining = 0;
+      }
+    }
+
+    await createPayment({ companyId, clientId: detailClient.id, amount });
+
+    setReceiveModal(false);
+    setReceiveAmount('');
+    setDetailClient(null);
+    await loadClients();
+    Alert.alert('Recebimento', `Valor recebido: ${formatCurrency(amount)}`);
+  }
+
   function updateField(field: string, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
     if (errors[field]) {
@@ -143,16 +227,24 @@ export default function ClientesScreen() {
   }
 
   function renderClient({ item }: { item: Client }) {
+    const debt = debts[item.id!] ?? 0;
     return (
-      <Pressable onPress={() => router.push('/cliente-detalhe?id=' + item.id as any)}>
-        <ThemedView style={styles.dataRow}>
-          <ThemedText numberOfLines={1} style={styles.colNome}>{item.name}</ThemedText>
-          <ThemedText numberOfLines={1} style={styles.colEmail}>{item.email || '---'}</ThemedText>
-          <ThemedText style={styles.colPhone}>{item.phone || '---'}</ThemedText>
-          <ThemedText style={styles.colCidade}>
-            {item.city ? `${item.city}${item.state ? `/${item.state}` : ''}` : '---'}
-          </ThemedText>
+      <Pressable onPress={() => { setDetailClient(item); loadTransactions(item); }} style={styles.dataRow}>
+        <ThemedText style={styles.colCodigo}>cod: {item.codigo ?? '---'}</ThemedText>
+        <ThemedView style={styles.nameRow}>
+          <ThemedText style={styles.colNome} numberOfLines={1}>{item.name}</ThemedText>
+          {debt > 0 && (
+            <Pressable
+              onPress={() => { setDetailClient(item); loadTransactions(item); setReceiveAmount(''); setReceiveModal(true); }}
+              style={styles.listReceiveButton}
+            >
+              <ThemedText style={styles.listReceiveButtonText}>Receber</ThemedText>
+            </Pressable>
+          )}
         </ThemedView>
+        <ThemedText style={[styles.colDebt, debt > 0 && { color: '#ef4444' }]}>
+          dívida: {formatCurrency(debt)}
+        </ThemedText>
       </Pressable>
     );
   }
@@ -210,12 +302,6 @@ export default function ClientesScreen() {
           </ThemedView>
         ) : (
           <ThemedView style={styles.tableWrapper}>
-            <ThemedView style={styles.tableHeader}>
-              <ThemedText type="smallBold" style={styles.colNome}>Nome</ThemedText>
-              <ThemedText type="smallBold" style={styles.colEmail}>Email</ThemedText>
-              <ThemedText type="smallBold" style={styles.colPhone}>Telefone</ThemedText>
-              <ThemedText type="smallBold" style={styles.colCidade}>Cidade</ThemedText>
-            </ThemedView>
             <FlatList
               data={clients}
               keyExtractor={(item) => item.id!}
@@ -225,6 +311,117 @@ export default function ClientesScreen() {
           </ThemedView>
         )}
       </SafeAreaView>
+
+      {/* Detail Modal */}
+      <Modal visible={!!detailClient} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setDetailClient(null)}>
+        <SafeAreaView style={[styles.modalSafe, { backgroundColor: theme.background }]}>
+          <ThemedView style={styles.modalHeader}>
+            <ThemedText type="title" style={styles.modalTitle}>{detailClient?.name}</ThemedText>
+            <Pressable onPress={() => setDetailClient(null)}>
+              <ThemedText type="default" themeColor="textSecondary">Fechar</ThemedText>
+            </Pressable>
+          </ThemedView>
+          <ScrollView contentContainerStyle={styles.modalScrollContent}>
+            <ThemedView style={styles.detailCard}>
+              <ThemedText type="small" themeColor="textSecondary">Código</ThemedText>
+              <ThemedText style={{ fontWeight: '500' }}>{detailClient?.codigo || '---'}</ThemedText>
+            </ThemedView>
+            <ThemedView style={styles.detailCard}>
+              <ThemedText type="small" themeColor="textSecondary">Email</ThemedText>
+              <ThemedText style={{ fontWeight: '500' }}>{detailClient?.email || '---'}</ThemedText>
+            </ThemedView>
+            <ThemedView style={styles.detailCard}>
+              <ThemedText type="small" themeColor="textSecondary">Telefone</ThemedText>
+              <ThemedText style={{ fontWeight: '500' }}>{detailClient?.phone || '---'}</ThemedText>
+            </ThemedView>
+            <ThemedView style={styles.detailCard}>
+              <ThemedText type="small" themeColor="textSecondary">Endereço</ThemedText>
+              <ThemedText style={{ fontWeight: '500' }}>
+                {detailClient?.address ? `${detailClient.address}${detailClient?.addressNumber ? `, ${detailClient.addressNumber}` : ''}` : '---'}
+              </ThemedText>
+            </ThemedView>
+            <ThemedView style={styles.detailCard}>
+              <ThemedText type="small" themeColor="textSecondary">Cidade / Estado</ThemedText>
+              <ThemedText style={{ fontWeight: '500' }}>
+                {detailClient?.city ? `${detailClient.city}${detailClient.state ? `/${detailClient.state}` : ''}` : '---'}
+              </ThemedText>
+            </ThemedView>
+            <ThemedView style={[styles.detailCard, { borderTopWidth: 2, borderTopColor: 'rgba(128,128,128,0.2)', marginTop: Spacing.two }]}>
+              <ThemedText type="small" themeColor="textSecondary">Dívida Total</ThemedText>
+              <ThemedText style={{ fontWeight: '700', fontSize: 20, color: '#ef4444' }}>
+                {formatCurrency(debts[detailClient?.id ?? ''] ?? 0)}
+              </ThemedText>
+            </ThemedView>
+            {(debts[detailClient?.id ?? ''] ?? 0) > 0 && (
+              <Pressable onPress={() => { setReceiveAmount(''); setReceiveModal(true); }} style={styles.receiveButton}>
+                <ThemedText style={styles.receiveButtonText}>Receber</ThemedText>
+              </Pressable>
+            )}
+            <Pressable
+              onPress={() => {
+                const id = detailClient?.id;
+                const name = detailClient?.name;
+                setDetailClient(null);
+                if (id) confirmDelete(id, name ?? '');
+              }}
+              style={styles.deleteButton}
+            >
+              <ThemedText style={styles.deleteButtonText}>Excluir Cliente</ThemedText>
+            </Pressable>
+
+            <ThemedView style={[styles.detailCard, { borderTopWidth: 2, borderTopColor: 'rgba(128,128,128,0.2)', marginTop: Spacing.six }]}>
+              <ThemedText type="smallBold" style={{ letterSpacing: 0.5 }}>HISTÓRICO</ThemedText>
+            </ThemedView>
+            {transactions.length === 0 ? (
+              <ThemedText type="small" themeColor="textSecondary">Nenhuma transação</ThemedText>
+            ) : (
+              transactions.map((tx, idx) => (
+                <ThemedView key={idx} style={styles.txRow}>
+                  <ThemedView style={{ flex: 1 }}>
+                    <ThemedText style={{ fontWeight: '500', fontSize: 14 }}>{tx.description}</ThemedText>
+                    <ThemedText type="small" themeColor="textSecondary">
+                      {tx.date.toLocaleDateString('pt-BR')}
+                    </ThemedText>
+                  </ThemedView>
+                  <ThemedText style={{ fontWeight: '600', color: tx.type === 'recebimento' ? '#22c55e' : '#ef4444' }}>
+                    {tx.type === 'recebimento' ? '+' : '-'}{formatCurrency(tx.amount)}
+                  </ThemedText>
+                </ThemedView>
+              ))
+            )}
+          </ScrollView>
+          {receiveModal && (
+            <ThemedView style={[StyleSheet.absoluteFill, { justifyContent: 'flex-end' }]}>
+              <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.4)' }]} onPress={() => setReceiveModal(false)} />
+              <ThemedView style={[styles.receiveSheet, { backgroundColor: theme.background }]}>
+                <ThemedView style={styles.receiveHandle} />
+                <ThemedText style={{ fontWeight: '700', fontSize: 18, marginBottom: Spacing.three }}>
+                  Receber de {detailClient?.name}
+                </ThemedText>
+                <ThemedText type="small" themeColor="textSecondary" style={{ marginBottom: Spacing.one }}>
+                  Dívida total: {formatCurrency(debts[detailClient?.id ?? ''] ?? 0)}
+                </ThemedText>
+                <TextInput
+                  style={[styles.receiveInput, { color: theme.text, backgroundColor: theme.backgroundElement }]}
+                  placeholder="R$ 0,00"
+                  placeholderTextColor={theme.textSecondary}
+                  keyboardType="number-pad"
+                  value={receiveAmount}
+                  onChangeText={(v) => setReceiveAmount(formatCurrencyInput(v))}
+                />
+                <ThemedView style={styles.receiveActions}>
+                  <Pressable onPress={() => setReceiveModal(false)} style={styles.receiveCancel}>
+                    <ThemedText style={{ fontWeight: '600' }}>Cancelar</ThemedText>
+                  </Pressable>
+                  <Pressable onPress={handleReceivePayment} style={[styles.receiveConfirm, { backgroundColor: theme.text }]}>
+                    <ThemedText style={{ fontWeight: '600', color: theme.background }}>Confirmar</ThemedText>
+                  </Pressable>
+                </ThemedView>
+              </ThemedView>
+            </ThemedView>
+          )}
+        </SafeAreaView>
+      </Modal>
 
       <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={closeModal}>
         <KeyboardAvoidingView
@@ -258,8 +455,14 @@ export default function ClientesScreen() {
                 </ThemedView>
               </ThemedView>
 
-              {renderInput('CPF/CNPJ', 'cpfCnpj', { placeholder: '000.000.000-00' })}
-              {renderInput('Endereço', 'address', { placeholder: 'Rua, número, bairro' })}
+              <ThemedView style={styles.rowFields}>
+                <ThemedView style={{ flex: 2 }}>
+                  {renderInput('Endereço', 'address', { placeholder: 'Rua, bairro' })}
+                </ThemedView>
+                <ThemedView style={{ flex: 1 }}>
+                  {renderInput('Nº', 'addressNumber', { placeholder: 'Número' })}
+                </ThemedView>
+              </ThemedView>
 
               <ThemedView style={styles.rowFields}>
                 <ThemedView style={styles.halfField}>
@@ -270,7 +473,7 @@ export default function ClientesScreen() {
                 </ThemedView>
               </ThemedView>
 
-              {renderInput('CEP', 'zipCode', { placeholder: '00000-000' })}
+
 
               <Pressable
                 onPress={handleSave}
@@ -320,17 +523,28 @@ const styles = StyleSheet.create({
     borderBottomColor: '#cccccc',
   },
   dataRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
     paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.three,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#eeeeee',
+    borderBottomColor: 'rgba(128,128,128,0.2)',
   },
-  colNome: { flex: 1.5, fontSize: 13, fontWeight: '500', paddingRight: Spacing.one },
-  colEmail: { flex: 1.5, fontSize: 12, paddingRight: Spacing.one },
-  colPhone: { width: 100, fontSize: 12, paddingRight: Spacing.one },
-  colCidade: { flex: 1, fontSize: 12, textAlign: 'right' },
+  colCodigo: { fontSize: 12, fontWeight: '600', opacity: 0.5, marginBottom: Spacing.half },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.half,
+  },
+  colNome: { fontSize: 16, fontWeight: '600', flex: 1 },
+  colDebt: { fontSize: 13, fontWeight: '500' },
+  listReceiveButton: {
+    backgroundColor: '#22c55e',
+    paddingVertical: Spacing.one + 2,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.two,
+  },
+  listReceiveButtonText: { color: '#ffffff', fontWeight: '600', fontSize: 13 },
+  detailCard: { gap: Spacing.half, paddingVertical: Spacing.two },
   modalContainer: { flex: 1 },
   modalSafe: { flex: 1 },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.four, paddingVertical: Spacing.three },
@@ -345,4 +559,28 @@ const styles = StyleSheet.create({
   halfField: { flex: 1 },
   saveButton: { alignItems: 'center', justifyContent: 'center', paddingVertical: Spacing.three, borderRadius: Spacing.two, marginTop: Spacing.two },
   saveButtonText: { fontWeight: '600', fontSize: 16 },
+  deleteButton: { alignItems: 'center', justifyContent: 'center', paddingVertical: Spacing.three, borderRadius: Spacing.two, marginTop: Spacing.six, borderWidth: 1, borderColor: '#ef4444' },
+  deleteButtonText: { color: '#ef4444', fontWeight: '600', fontSize: 16 },
+  receiveButton: { alignItems: 'center', justifyContent: 'center', paddingVertical: Spacing.three, borderRadius: Spacing.two, marginTop: Spacing.three, backgroundColor: '#22c55e' },
+  receiveButtonText: { color: '#ffffff', fontWeight: '600', fontSize: 16 },
+  receiveSheet: {
+    padding: Spacing.four,
+    paddingBottom: Spacing.six,
+    borderTopLeftRadius: Spacing.four,
+    borderTopRightRadius: Spacing.four,
+    gap: Spacing.three,
+  },
+  receiveHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(128,128,128,0.3)',
+    alignSelf: 'center',
+    marginBottom: Spacing.two,
+  },
+  receiveInput: { borderRadius: Spacing.two, paddingHorizontal: Spacing.three, paddingVertical: Spacing.three, fontSize: 24, fontWeight: '700', textAlign: 'center' },
+  receiveActions: { flexDirection: 'row', gap: Spacing.three, marginTop: Spacing.two },
+  receiveCancel: { flex: 1, alignItems: 'center', paddingVertical: Spacing.three, borderRadius: Spacing.two, borderWidth: 1, borderColor: 'rgba(128,128,128,0.3)' },
+  receiveConfirm: { flex: 1, alignItems: 'center', paddingVertical: Spacing.three, borderRadius: Spacing.two },
+  txRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: Spacing.two, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(128,128,128,0.2)' },
 });

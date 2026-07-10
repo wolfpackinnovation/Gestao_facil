@@ -1,154 +1,456 @@
-import { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import {
+  Alert,
+  Animated,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
+  TextInput,
+  View,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/contexts/auth';
-import * as SaleService from '@/services/sale-service';
-import * as ProductService from '@/services/product-service';
-import * as ClientService from '@/services/client-service';
-import * as CashService from '@/services/cash-service';
+import { getTodaySales, getSalesByDate, getSaleItems } from '@/services/sale-service';
+import { getPaymentsByDate } from '@/services/payment-service';
+import { getProdutos } from '@/services/estoque-storage';
+import type { Produto } from '@/services/estoque-storage';
+import type { Sale } from '@/types/schema';
+import { formatCurrency, formatCurrencyInput } from '@/utils/format';
+import { createDespesa } from '@/services/despesa-service';
 
-function formatCurrency(value: number): string {
-  return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+function formatDayName(date: Date): string {
+  return date.toLocaleDateString('pt-BR', { weekday: 'long' });
 }
 
-interface DashboardData {
-  todaySales: number
-  totalProducts: number
-  totalClients: number
-  totalCash: number
-  lowStockProducts: number
+function formatDate(date: Date): string {
+  return date.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' });
 }
+
+function capitalize(str: string): string {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
 export default function HomeScreen() {
   const theme = useTheme();
   const router = useRouter();
   const { user } = useAuth();
-  const [data, setData] = useState<DashboardData>({
-    todaySales: 0,
-    totalProducts: 0,
-    totalClients: 0,
-    totalCash: 0,
-    lowStockProducts: 0,
-  });
-
   const companyId = user?.uid ?? '';
+  const userName = user?.displayName ?? user?.email?.split('@')[0] ?? 'Usuário';
 
-  const loadDashboard = useCallback(async () => {
-    try {
-      const [sales, products, clients, registers] = await Promise.all([
-        SaleService.getTodaySales(companyId),
-        ProductService.listProducts(companyId),
-        ClientService.listClients(companyId),
-        CashService.listCashRegisters(companyId),
-      ]);
+  const [todaySales, setTodaySales] = useState<Sale[]>([]);
+  const [yesterdaySales, setYesterdaySales] = useState<Sale[]>([]);
+  const [todayPayments, setTodayPayments] = useState<any[]>([]);
+  const [yesterdayPayments, setYesterdayPayments] = useState<any[]>([]);
+  const [products, setProducts] = useState<Produto[]>([]);
+  const [lowStockProducts, setLowStockProducts] = useState<Produto[]>([]);
+  const [topProducts, setTopProducts] = useState<{ name: string; count: number }[]>([]);
+  const [fabOpen, setFabOpen] = useState(false);
+  const fabAnim = useRef(new Animated.Value(0)).current;
+  const [dividaModal, setDividaModal] = useState(false);
+  const [dividaDesc, setDividaDesc] = useState('');
+  const [dividaValor, setDividaValor] = useState('');
 
-      const todayTotal = sales.reduce((sum, s) => sum + s.totalAmount, 0);
-      const totalCash = registers.reduce((sum, r) => sum + (r.currentBalance ?? 0), 0);
-      const lowStock = products.filter(
-        (p) => p.minStock != null && p.stockQuantity <= p.minStock
-      ).length;
+  const today = new Date();
 
-      setData({
-        todaySales: todayTotal,
-        totalProducts: products.length,
-        totalClients: clients.length,
-        totalCash,
-        lowStockProducts: lowStock,
-      });
-    } catch {
-      // Firestore may not be initialized yet
+  const loadData = useCallback(async () => {
+    if (!companyId) return;
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const [todayData, yesterdayData, todayPayData, yesterdayPayData, allProducts] = await Promise.all([
+      getTodaySales(companyId),
+      getSalesByDate(companyId, yesterday),
+      getPaymentsByDate(companyId, today),
+      getPaymentsByDate(companyId, yesterday),
+      getProdutos(companyId),
+    ]);
+
+    const lowStock = allProducts.filter(
+      (p) => p.estoqueMinimo > 0 && p.estoqueAtual <= p.estoqueMinimo
+    );
+
+    setTodaySales(todayData);
+    setYesterdaySales(yesterdayData);
+    setTodayPayments(todayPayData);
+    setYesterdayPayments(yesterdayPayData);
+    setProducts(allProducts);
+    setLowStockProducts(lowStock);
+
+    const itemsPromises = todayData.map((s) => s.id ? getSaleItems(s.id) : Promise.resolve([]));
+    const allItems = (await Promise.all(itemsPromises)).flat();
+
+    const productCounts: Record<string, number> = {};
+    for (const item of allItems) {
+      productCounts[item.productId] = (productCounts[item.productId] ?? 0) + item.quantity;
     }
+
+    const sorted = Object.entries(productCounts).sort((a, b) => b[1] - a[1]).slice(0, 3);
+    const productMap = new Map(allProducts.map((p) => [p.id, p.nome]));
+    setTopProducts(
+      sorted.map(([id, count]) => ({
+        name: productMap.get(id) ?? 'Produto',
+        count,
+      }))
+    );
   }, [companyId]);
+
+  useEffect(() => {
+    Animated.spring(fabAnim, {
+      toValue: fabOpen ? 1 : 0,
+      useNativeDriver: true,
+      friction: 8,
+    }).start();
+  }, [fabOpen, fabAnim]);
+
+  function toggleFab() {
+    setFabOpen((v) => !v);
+  }
+
+  function handleAction(route: string) {
+    setFabOpen(false);
+    router.push(route as any);
+  }
+
+  function handleAddDivida() {
+    setFabOpen(false);
+    setDividaDesc('');
+    setDividaValor('');
+    setDividaModal(true);
+  }
+
+  async function handleSaveDivida() {
+    if (!companyId || !dividaDesc.trim() || !dividaValor.trim()) {
+      Alert.alert('Campos obrigatórios', 'Preencha a descrição e o valor.');
+      return;
+    }
+    const valor = parseFloat(dividaValor.replace(/\D/g, '')) / 100;
+    if (valor <= 0) {
+      Alert.alert('Valor inválido', 'Digite um valor válido.');
+      return;
+    }
+    try {
+      await createDespesa({
+        companyId,
+        descricao: dividaDesc.trim(),
+        valor,
+        categoria: 'Boletos',
+        data: new Date().toISOString().slice(0, 10),
+        observacao: '',
+      });
+      setDividaModal(false);
+      Alert.alert('Dívida registrada', `R$ ${valor.toFixed(2)} em "${dividaDesc.trim()}"`);
+    } catch (e: any) {
+      Alert.alert('Erro', e?.message ?? 'Erro ao salvar dívida.');
+    }
+  }
 
   useFocusEffect(
     useCallback(() => {
-      loadDashboard();
-    }, [loadDashboard])
+      loadData();
+    }, [loadData])
   );
 
-  const cards = [
-    {
-      emoji: '💰',
-      label: 'Vendas Hoje',
-      value: formatCurrency(data.todaySales),
-    },
-    {
-      emoji: '📦',
-      label: 'Produtos',
-      value: `${data.totalProducts}`,
-    },
-    {
-      emoji: '👥',
-      label: 'Clientes',
-      value: `${data.totalClients}`,
-    },
-    {
-      emoji: '💵',
-      label: 'Saldo em Caixa',
-      value: formatCurrency(data.totalCash),
-    },
-    {
-      emoji: '⚠️',
-      label: 'Estoque Baixo',
-      value: `${data.lowStockProducts}`,
-      alert: data.lowStockProducts > 0,
-    },
-  ];
+  const todayTotal = useMemo(
+    () =>
+      todaySales.reduce((sum, s) => sum + s.totalAmount, 0) +
+      todayPayments.reduce((sum, p) => sum + p.amount, 0),
+    [todaySales, todayPayments]
+  );
+
+  const yesterdayTotal = useMemo(
+    () =>
+      yesterdaySales.reduce((sum, s) => sum + s.totalAmount, 0) +
+      yesterdayPayments.reduce((sum, p) => sum + p.amount, 0),
+    [yesterdaySales, yesterdayPayments]
+  );
+
+  const percentChange = useMemo(() => {
+    if (yesterdayTotal === 0) return todayTotal > 0 ? 100 : 0;
+    return Math.round(((todayTotal - yesterdayTotal) / yesterdayTotal) * 100);
+  }, [todayTotal, yesterdayTotal]);
+
+  const averageTicket = useMemo(() => {
+    if (todaySales.length === 0) return 0;
+    return todayTotal / todaySales.length;
+  }, [todayTotal, todaySales.length]);
 
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-          <ThemedText type="code" style={styles.sectionTitle}>Resumo</ThemedText>
-          <ThemedView style={styles.cardsGrid}>
-            {cards.map((card, index) => (
-              <Pressable
-                key={index}
-                style={[
-                  styles.card,
-                  { backgroundColor: theme.backgroundElement },
-                  card.alert && { borderWidth: 1, borderColor: '#f59e0b' },
-                ]}
-              >
-                <ThemedText style={styles.cardEmoji}>{card.emoji}</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary" style={styles.cardLabel}>
-                  {card.label}
-                </ThemedText>
-                <ThemedText style={styles.cardValue}>{card.value}</ThemedText>
-              </Pressable>
-            ))}
-          </ThemedView>
+          {/* Greeting + Date */}
+          <View style={styles.headerSection}>
+            <ThemedText style={styles.greeting}>Olá, {userName} 👋</ThemedText>
+            <ThemedText style={styles.dateText}>
+              {capitalize(formatDayName(today))}, {formatDate(today)}
+            </ThemedText>
+          </View>
 
-          <ThemedText type="code" style={styles.sectionTitle}>Ações Rápidas</ThemedText>
-          <ThemedView style={styles.actionsRow}>
-            <Pressable
-              onPress={() => router.push('/nova-venda')}
-              style={[styles.actionCard, { backgroundColor: theme.backgroundElement }]}
-            >
-              <ThemedText style={styles.actionEmoji}>💳</ThemedText>
-              <ThemedText type="small" style={{ textAlign: 'center' }}>Nova Venda</ThemedText>
-            </Pressable>
-          </ThemedView>
+          <View style={styles.divider} />
+
+          {/* Sales Today */}
+          <View style={styles.totalCard}>
+            <ThemedText style={styles.totalCardLabel}>💰 Vendas Hoje</ThemedText>
+            <ThemedText style={styles.totalCardValue} numberOfLines={1} adjustsFontSizeToFit>
+              {formatCurrency(todayTotal)}
+            </ThemedText>
+            <View style={styles.totalBreakdown}>
+              <View style={styles.totalBreakdownItem}>
+                <ThemedText style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', letterSpacing: 1 }}>VENDAS</ThemedText>
+                <ThemedText style={{ fontSize: 22, fontWeight: '700', color: '#fff' }}>
+                  {formatCurrency(todaySales.reduce((s, v) => s + v.totalAmount, 0))}
+                </ThemedText>
+              </View>
+              <View style={styles.totalBreakdownItem}>
+                <ThemedText style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', letterSpacing: 1 }}>RECEBIMENTOS</ThemedText>
+                <ThemedText style={{ fontSize: 22, fontWeight: '700', color: '#fff' }}>
+                  {formatCurrency(todayPayments.reduce((s, p) => s + p.amount, 0))}
+                </ThemedText>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.divider} />
+
+          {/* Stats Grid */}
+          <View style={styles.statsGrid}>
+            <View style={styles.statsRow}>
+              <View style={[styles.statBox, { backgroundColor: theme.backgroundElement }]}>
+                <ThemedText style={styles.statValue}>{todaySales.length}</ThemedText>
+                <ThemedText style={styles.statLabel}>Vendas</ThemedText>
+              </View>
+              <View style={[styles.statBox, { backgroundColor: theme.backgroundElement }]}>
+                <ThemedText style={styles.statValue}>{formatCurrency(averageTicket)}</ThemedText>
+                <ThemedText style={styles.statLabel}>Ticket Médio</ThemedText>
+              </View>
+            </View>
+            <View style={styles.statsRow}>
+              <View style={[styles.statBox, { backgroundColor: theme.backgroundElement }]}>
+                <ThemedText style={styles.statValue}>{products.length}</ThemedText>
+                <ThemedText style={styles.statLabel}>Produtos</ThemedText>
+              </View>
+              <View style={[styles.statBox, { backgroundColor: theme.backgroundElement }]}>
+                <ThemedText style={[styles.statValue, lowStockProducts.length > 0 && { color: '#ef4444' }]}>
+                  {lowStockProducts.length} {lowStockProducts.length === 1 ? 'Alerta' : 'Alertas'}
+                </ThemedText>
+                <ThemedText style={styles.statLabel}>Estoque</ThemedText>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.divider} />
+
+          {/* Week Sales Chart */}
+          <ThemedText style={styles.sectionTitle}>📊 Vendas da Semana</ThemedText>
+          <WeekChart todayTotal={todayTotal} />
+
+          <View style={styles.divider} />
+
+          {/* Alerts */}
+          <ThemedText style={styles.sectionTitle}>⚠️ Atenção</ThemedText>
+          <View style={[styles.alertBox, { backgroundColor: theme.backgroundElement }]}>
+            <ThemedText style={styles.alertItem}>
+              • {lowStockProducts.length} {lowStockProducts.length === 1 ? 'produto acabando' : 'produtos acabando'}
+            </ThemedText>
+            <ThemedText style={styles.alertItem}>• 0 contas vencem hoje</ThemedText>
+            <ThemedText style={styles.alertItem}>• 0 cliente possui fiado atrasado</ThemedText>
+          </View>
+
+          <View style={styles.divider} />
+
+          {/* Top Products */}
+          <ThemedText style={styles.sectionTitle}>🔥 Produtos mais vendidos</ThemedText>
+          <View style={[styles.topProductsBox, { backgroundColor: theme.backgroundElement }]}>
+            {topProducts.length === 0 ? (
+              <ThemedText style={styles.emptyText}>Nenhum produto vendido hoje</ThemedText>
+            ) : (
+              topProducts.map((p, i) => (
+                <ThemedText key={p.name} style={styles.topProductItem}>
+                  {i + 1}. {p.name}
+                </ThemedText>
+              ))
+            )}
+          </View>
+
         </ScrollView>
       </SafeAreaView>
+
+      {/* Overlay */}
+      {fabOpen && (
+        <TouchableWithoutFeedback onPress={() => setFabOpen(false)}>
+          <View style={styles.fabOverlay} />
+        </TouchableWithoutFeedback>
+      )}
+
+      {/* FAB Menu Items */}
+      {[
+        { label: 'Nova Venda', icon: '💰', onPress: () => handleAction('/nova-venda') },
+        { label: 'Novo Produto', icon: '📦', onPress: () => handleAction('/estoque') },
+        { label: 'Adicionar Dívida', icon: '💳', onPress: handleAddDivida },
+        { label: 'Receber Fiado', icon: '📝', onPress: () => handleAction('/clientes') },
+      ].map((item, i) => {
+        const translateY = fabAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [60, 0],
+        });
+        const opacity = fabAnim.interpolate({
+          inputRange: [0, 0.5, 1],
+          outputRange: [0, 0, 1],
+        });
+        return (
+          <React.Fragment key={item.label}>
+            <Animated.View
+              style={[
+                styles.fabItem,
+                {
+                  backgroundColor: theme.backgroundElement,
+                  opacity,
+                  bottom: 88 + 52 * (3 - i),
+                  transform: [{ translateY }],
+                },
+              ]}
+            >
+              <Pressable onPress={item.onPress} style={styles.fabItemPress}>
+                <ThemedText style={{ fontSize: 16 }}>{item.icon}</ThemedText>
+                <ThemedText style={styles.fabItemLabel}>{item.label}</ThemedText>
+              </Pressable>
+            </Animated.View>
+          </React.Fragment>
+        );
+      })}
+
+      {/* FAB Button */}
+      <Pressable
+        onPress={toggleFab}
+        style={[styles.fab, { backgroundColor: '#059669' }]}
+      >
+        <Animated.Text
+          style={[
+            styles.fabIcon,
+            {
+              transform: [
+                {
+                  rotate: fabAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ['0deg', '135deg'],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          +
+        </Animated.Text>
+      </Pressable>
+
+      {/* Divida Modal */}
+      <Modal visible={dividaModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setDividaModal(false)}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={[styles.modalContainer, { backgroundColor: theme.background }]}
+        >
+          <SafeAreaView style={{ flex: 1 }}>
+            <ThemedView style={styles.modalHeader}>
+              <ThemedText style={{ fontSize: 22, fontWeight: '700' }}>Adicionar Dívida</ThemedText>
+              <Pressable onPress={() => setDividaModal(false)}>
+                <ThemedText type="default" themeColor="textSecondary">Cancelar</ThemedText>
+              </Pressable>
+            </ThemedView>
+
+            <ScrollView contentContainerStyle={styles.modalForm} keyboardShouldPersistTaps="handled">
+              <ThemedView style={styles.fieldGroup}>
+                <ThemedText type="smallBold" style={styles.fieldLabel}>Descrição</ThemedText>
+                <TextInput
+                  style={[styles.input, { color: theme.text, backgroundColor: theme.backgroundElement }]}
+                  placeholder="Ex: Conta de luz"
+                  placeholderTextColor={theme.textSecondary}
+                  value={dividaDesc}
+                  onChangeText={setDividaDesc}
+                />
+              </ThemedView>
+
+              <ThemedView style={styles.fieldGroup}>
+                <ThemedText type="smallBold" style={styles.fieldLabel}>Valor</ThemedText>
+                <TextInput
+                  style={[styles.input, { color: theme.text, backgroundColor: theme.backgroundElement, fontSize: 22, fontWeight: '700', textAlign: 'center' }]}
+                  placeholder="R$ 0,00"
+                  placeholderTextColor={theme.textSecondary}
+                  keyboardType="number-pad"
+                  value={dividaValor}
+                  onChangeText={(v) => setDividaValor(formatCurrencyInput(v))}
+                />
+              </ThemedView>
+
+              <Pressable
+                onPress={handleSaveDivida}
+                style={[styles.saveButton, { backgroundColor: '#059669' }]}
+              >
+                <ThemedText style={{ fontWeight: '600', fontSize: 16, color: '#fff' }}>
+                  Salvar Dívida
+                </ThemedText>
+              </Pressable>
+            </ScrollView>
+          </SafeAreaView>
+        </KeyboardAvoidingView>
+      </Modal>
     </ThemedView>
   );
 }
 
+function WeekChart({ todayTotal }: { todayTotal: number }) {
+  const theme = useTheme();
+  const bars = useMemo(() => {
+    const today = new Date();
+    const maxVal = Math.max(todayTotal, 1);
+    const data: { label: string; value: number }[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      const isToday = i === 0;
+      data.push({
+        label: weekDays[d.getDay()],
+        value: isToday ? todayTotal : 0,
+      });
+    }
+    return data.map((d) => ({ ...d, height: Math.max((d.value / maxVal) * 100, 3) }));
+  }, [todayTotal]);
+
+  return (
+    <View style={[styles.chartBox, { backgroundColor: theme.backgroundElement }]}>
+      <View style={styles.chartBars}>
+        {bars.map((bar, idx) => (
+          <View key={idx} style={styles.chartCol}>
+            <View
+              style={[
+                styles.chartBar,
+                {
+                  height: bar.height,
+                  backgroundColor: idx === 6 ? '#059669' : theme.textSecondary,
+                },
+              ]}
+            />
+            <ThemedText style={styles.chartLabel}>{bar.label}</ThemedText>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1 },
   safeArea: {
     flex: 1,
     paddingHorizontal: Spacing.four,
@@ -156,46 +458,119 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     width: '100%',
   },
-  scrollContent: {
-    gap: Spacing.four,
-  },
-  sectionTitle: {
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  cardsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.three,
-  },
-  card: {
-    width: '47%',
+  scrollContent: { paddingBottom: Spacing.six },
+
+  headerSection: { paddingTop: Spacing.two },
+  greeting: { fontSize: 24, fontWeight: '700', lineHeight: 32 },
+  dateText: { fontSize: 15, lineHeight: 20, opacity: 0.6, marginTop: Spacing.half },
+
+  divider: { height: 1, backgroundColor: 'rgba(128,128,128,0.2)', marginVertical: Spacing.three },
+
+  totalCard: {
     borderRadius: Spacing.four,
-    padding: Spacing.three,
-    gap: Spacing.one,
+    paddingVertical: Spacing.five,
+    paddingHorizontal: Spacing.four,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    alignSelf: 'center',
+    backgroundColor: '#059669',
   },
-  cardEmoji: {
-    fontSize: 28,
+  totalCardLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    lineHeight: 20,
+    color: 'rgba(255,255,255,0.75)',
+    textAlign: 'center',
   },
-  cardLabel: {
-    letterSpacing: 0.3,
-  },
-  cardValue: {
-    fontSize: 22,
+  totalCardValue: {
+    fontSize: 30,
     fontWeight: '700',
+    lineHeight: 38,
+    textAlign: 'center',
+    color: '#fff',
   },
-  actionsRow: {
+  totalBreakdown: {
     flexDirection: 'row',
-    gap: Spacing.three,
+    gap: Spacing.five,
+    marginTop: Spacing.four,
+    paddingTop: Spacing.four,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
   },
-  actionCard: {
+  totalBreakdownItem: { alignItems: 'center', gap: Spacing.one },
+
+  statsGrid: { gap: Spacing.three },
+  statsRow: { flexDirection: 'row', gap: Spacing.three },
+  statBox: {
     flex: 1,
     borderRadius: Spacing.three,
-    padding: Spacing.three,
+    paddingVertical: Spacing.three,
+    paddingHorizontal: Spacing.three,
     alignItems: 'center',
-    gap: Spacing.one,
   },
-  actionEmoji: {
-    fontSize: 28,
+  statValue: { fontSize: 20, fontWeight: '700', lineHeight: 26 },
+  statLabel: { fontSize: 13, lineHeight: 18, opacity: 0.6, marginTop: Spacing.half },
+
+  sectionTitle: { fontSize: 16, fontWeight: '700', lineHeight: 22, marginBottom: Spacing.two },
+
+  chartBox: { borderRadius: Spacing.three, padding: Spacing.three },
+  chartBars: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', height: 110 },
+  chartCol: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', gap: Spacing.one },
+  chartBar: { width: 24, borderRadius: Spacing.one },
+  chartLabel: { fontSize: 11, lineHeight: 14, opacity: 0.5 },
+
+  alertBox: { borderRadius: Spacing.three, padding: Spacing.three, gap: Spacing.one },
+  alertItem: { fontSize: 14, lineHeight: 22 },
+
+  topProductsBox: { borderRadius: Spacing.three, padding: Spacing.three, gap: Spacing.one },
+  topProductItem: { fontSize: 15, lineHeight: 24, fontWeight: '500' },
+  emptyText: { fontSize: 13, lineHeight: 18, opacity: 0.5 },
+
+  fab: {
+    position: 'absolute',
+    bottom: 24,
+    right: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
   },
+  fabIcon: { fontSize: 28, lineHeight: 30, color: '#fff', fontWeight: '300' },
+  fabOverlay: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  fabItem: {
+    position: 'absolute',
+    right: 24,
+    borderRadius: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+  },
+  fabItemPress: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  fabItemLabel: { fontSize: 14, fontWeight: '600' },
+  modalContainer: { flex: 1 },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.four, paddingVertical: Spacing.three },
+  modalForm: { paddingHorizontal: Spacing.four, gap: Spacing.four, paddingBottom: Spacing.six },
+  fieldGroup: { gap: Spacing.one },
+  fieldLabel: { letterSpacing: 0.5 },
+  input: { borderWidth: 1, borderColor: 'transparent', borderRadius: Spacing.two, paddingHorizontal: Spacing.three, paddingVertical: Platform.OS === 'ios' ? Spacing.three : Spacing.two, fontSize: 16 },
+  saveButton: { alignItems: 'center', justifyContent: 'center', paddingVertical: Spacing.three, borderRadius: Spacing.two, marginTop: Spacing.two },
 });

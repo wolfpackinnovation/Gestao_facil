@@ -22,11 +22,13 @@ export interface User extends BaseEntity {
 
 export interface Client extends BaseEntity {
   companyId: string
+  codigo?: string
   name: string
   email?: string
   phone?: string
   cpfCnpj?: string
   address?: string
+  addressNumber?: string
   city?: string
   state?: string
   zipCode?: string
@@ -57,6 +59,12 @@ export interface Product extends BaseEntity {
   metadata?: string
 }
 
+export interface Payment extends BaseEntity {
+  companyId: string
+  clientId: string
+  amount: number
+}
+
 export interface LossControl extends BaseEntity {
   companyId: string
   productId: string
@@ -72,6 +80,7 @@ export interface Sale extends BaseEntity {
   totalAmount: number
   paymentMethod?: string
   status?: string
+  paidAmount?: number
 }
 
 export interface SaleItem extends BaseEntity {

@@ -12,6 +12,7 @@ export interface Produto {
   unidade: UnidadeMedida
   quantidade: number
   custo: number
+  precoVenda: number
   estoqueAtual: number
   estoqueMinimo: number
   dataValidade: string
@@ -29,6 +30,7 @@ function fromFirestoreDoc(doc: any): Produto {
     unidade: doc.unidade,
     quantidade: doc.quantidade,
     custo: doc.custo,
+    precoVenda: doc.precoVenda ?? 0,
     estoqueAtual: doc.estoqueAtual,
     estoqueMinimo: doc.estoqueMinimo,
     dataValidade: doc.dataValidade,

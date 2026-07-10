@@ -20,6 +20,9 @@ export const Collections = {
   productions: 'productions',
   productionConsumptions: 'productionConsumptions',
   inventory: 'inventory',
+  payments: 'payments',
+  desossas: 'desossas',
+  expenses: 'expenses',
 } as const
 
 export type CollectionName = (typeof Collections)[keyof typeof Collections]

@@ -19,9 +19,9 @@ import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/contexts/auth';
 import * as SaleService from '@/services/sale-service';
-import * as ProductService from '@/services/product-service';
 import * as ClientService from '@/services/client-service';
-import type { Product, Client } from '@/types/schema';
+import { getProdutos, saveProduto, type Produto } from '@/services/estoque-storage';
+import type { Client } from '@/types/schema';
 
 function formatCurrency(value: number): string {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -46,7 +46,7 @@ export default function NovaVendaScreen() {
   const { user } = useAuth();
   const companyId = user?.uid ?? '';
 
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<Produto[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedClientId, setSelectedClientId] = useState<string>('');
@@ -54,21 +54,67 @@ export default function NovaVendaScreen() {
   const [showProductPicker, setShowProductPicker] = useState(false);
   const [showClientPicker, setShowClientPicker] = useState(false);
   const [productSearch, setProductSearch] = useState('');
+  const [showQuantityModal, setShowQuantityModal] = useState(false);
+  const [quantityModalProduct, setQuantityModalProduct] = useState<Produto | null>(null);
+  const [quantityInput, setQuantityInput] = useState('');
 
   useEffect(() => {
-    Promise.all([
-      ProductService.listAllProducts().then(setProducts),
-      ClientService.listAllClients().then(setClients),
-    ]);
+    if (!companyId) return;
+    getProdutos(companyId).then(setProducts);
+    ClientService.listAllClients().then(setClients);
   }, [companyId]);
 
-  function addProductToCart(product: Product) {
+  const needsQuantityInput = (unit: string) => unit !== 'un';
+
+  function handleProductPress(product: Produto) {
+    if (needsQuantityInput(product.unidade)) {
+      setShowProductPicker(false);
+      setQuantityModalProduct(product);
+      setQuantityInput('');
+      setShowQuantityModal(true);
+    } else {
+      addProductToCart(product, 1);
+    }
+  }
+
+  function confirmQuantityInput() {
+    if (!quantityModalProduct) return;
+    const qty = parseFloat(quantityInput.replace(',', '.'));
+    if (isNaN(qty) || qty <= 0) return;
+    if (qty > quantityModalProduct.estoqueAtual) {
+      Alert.alert('Estoque insuficiente', `Disponível: ${quantityModalProduct.estoqueAtual} ${quantityModalProduct.unidade}`);
+      return;
+    }
+    addProductToCart(quantityModalProduct, qty);
+    setShowQuantityModal(false);
+    setQuantityModalProduct(null);
+    setQuantityInput('');
+  }
+
+  function adjustQuantity(delta: number) {
+    const current = parseFloat(quantityInput.replace(',', '.')) || 0;
+    const next = Math.max(0, current + delta);
+    const max = quantityModalProduct?.estoqueAtual ?? Infinity;
+    if (next > max) return;
+    setQuantityInput(next > 0 ? String(next) : '');
+  }
+
+  const qtyValue = parseFloat(quantityInput.replace(',', '.')) || 0;
+  const subtotalValue = quantityModalProduct ? qtyValue * quantityModalProduct.custo : 0;
+
+  function addProductToCart(product: Produto, qty: number) {
     const existing = cart.find((c) => c.productId === product.id);
+    const currentQty = existing ? existing.quantity : 0;
+    const totalQty = currentQty + qty;
+    if (totalQty > product.estoqueAtual) {
+      Alert.alert('Estoque insuficiente', `Disponível: ${product.estoqueAtual} ${product.unidade}`);
+      return;
+    }
     if (existing) {
       setCart((prev) =>
         prev.map((c) =>
           c.productId === product.id
-            ? { ...c, quantity: c.quantity + 1, subtotal: (c.quantity + 1) * c.unitPrice }
+            ? { ...c, quantity: totalQty, subtotal: totalQty * c.unitPrice }
             : c
         )
       );
@@ -76,11 +122,11 @@ export default function NovaVendaScreen() {
       setCart((prev) => [
         ...prev,
         {
-          productId: product.id!,
-          productName: product.name,
-          quantity: 1,
-          unitPrice: product.price,
-          subtotal: product.price,
+          productId: product.id,
+          productName: product.nome,
+          quantity: qty,
+          unitPrice: product.custo,
+          subtotal: qty * product.custo,
         },
       ]);
     }
@@ -91,6 +137,11 @@ export default function NovaVendaScreen() {
   function updateCartQuantity(productId: string, qty: number) {
     if (qty <= 0) {
       setCart((prev) => prev.filter((c) => c.productId !== productId));
+      return;
+    }
+    const product = products.find((p) => p.id === productId);
+    if (product && qty > product.estoqueAtual) {
+      Alert.alert('Estoque insuficiente', `Disponível: ${product.estoqueAtual} ${product.unidade}`);
       return;
     }
     setCart((prev) =>
@@ -118,25 +169,37 @@ export default function NovaVendaScreen() {
       return;
     }
 
-    const saleData = {
+    const saleData: Record<string, any> = {
       companyId,
       number: generateSaleNumber(),
-      clientId: selectedClientId || undefined,
       totalAmount: totalCart,
       paymentMethod,
-      status: 'concluída',
+      status: paymentMethod === 'fiado' ? 'pendente' : 'concluída',
     };
+    if (selectedClientId) {
+      saleData.clientId = selectedClientId;
+    }
 
     const items = cart.map((c) => ({
       productId: c.productId,
       quantity: c.quantity,
       unitPrice: c.unitPrice,
       subtotal: c.subtotal,
-      discount: undefined,
     }));
 
     try {
-      await SaleService.createSaleWithItems(saleData, items);
+      const saleId = await SaleService.createSaleWithItems(saleData, items);
+
+      for (const item of cart) {
+        const product = products.find((p) => p.id === item.productId);
+        if (product) {
+          await saveProduto({
+            ...product,
+            estoqueAtual: product.estoqueAtual - item.quantity,
+          });
+        }
+      }
+
       Alert.alert('Venda registrada', `Venda ${saleData.number} concluída com sucesso!`);
     } catch (e: any) {
       Alert.alert('Erro', e?.message ?? 'Erro ao registrar venda.');
@@ -145,12 +208,12 @@ export default function NovaVendaScreen() {
   }
 
   const filteredProducts = productSearch
-    ? products.filter((p) => p.name.toLowerCase().includes(productSearch.toLowerCase()))
+    ? products.filter((p) => p.nome.toLowerCase().includes(productSearch.toLowerCase()))
     : products;
 
   return (
     <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
+      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
         <ThemedView style={styles.header}>
           <Pressable onPress={goBack} style={styles.backButton}>
             <ThemedText type="default" themeColor="textSecondary">Cancelar</ThemedText>
@@ -164,45 +227,6 @@ export default function NovaVendaScreen() {
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Client Picker */}
-          <ThemedView style={styles.fieldGroup}>
-            <ThemedText type="smallBold" style={styles.fieldLabel}>Cliente</ThemedText>
-            <Pressable
-              onPress={() => setShowClientPicker(true)}
-              style={[styles.pickerButton, { backgroundColor: theme.backgroundElement }]}
-            >
-              <ThemedText style={selectedClientId ? undefined : { color: theme.textSecondary }}>
-                {selectedClientId
-                  ? clients.find((c) => c.id === selectedClientId)?.name
-                  : 'Selecionar cliente (opcional)'}
-              </ThemedText>
-            </Pressable>
-          </ThemedView>
-
-          {/* Payment Method */}
-          <ThemedView style={styles.fieldGroup}>
-            <ThemedText type="smallBold" style={styles.fieldLabel}>Forma de Pagamento</ThemedText>
-            <ThemedView style={styles.chipsRow}>
-              {['dinheiro', 'cartão', 'pix', 'fiado'].map((method) => (
-                <Pressable
-                  key={method}
-                  onPress={() => setPaymentMethod(method)}
-                  style={[
-                    styles.chip,
-                    { backgroundColor: paymentMethod === method ? theme.text : theme.backgroundElement },
-                  ]}
-                >
-                  <ThemedText
-                    type="small"
-                    style={{ color: paymentMethod === method ? theme.background : theme.text }}
-                  >
-                    {method.charAt(0).toUpperCase() + method.slice(1)}
-                  </ThemedText>
-                </Pressable>
-              ))}
-            </ThemedView>
-          </ThemedView>
-
           {/* Products Section */}
           <ThemedView style={styles.sectionHeader}>
             <ThemedText type="subtitle">Produtos</ThemedText>
@@ -220,7 +244,7 @@ export default function NovaVendaScreen() {
             </ThemedView>
           ) : (
             cart.map((item) => (
-              <ThemedView key={item.productId} type="backgroundElement" style={styles.cartItem}>
+              <ThemedView key={item.productId} style={styles.cartItem}>
                 <ThemedView style={styles.cartItemInfo}>
                   <ThemedText style={{ fontWeight: '600' }}>{item.productName}</ThemedText>
                   <ThemedText type="small" themeColor="textSecondary">
@@ -249,11 +273,51 @@ export default function NovaVendaScreen() {
             ))
           )}
 
+          {/* Payment Method */}
+          <ThemedView style={styles.fieldGroup}>
+            <ThemedText type="smallBold" style={styles.fieldLabel}>Forma de Pagamento</ThemedText>
+            <ThemedView style={styles.chipsRow}>
+              {['dinheiro', 'cartão', 'pix', 'fiado'].map((method) => (
+                <Pressable
+                  key={method}
+                  onPress={() => setPaymentMethod(method)}
+                  style={[
+                    styles.chip,
+                    { backgroundColor: paymentMethod === method ? theme.text : theme.backgroundElement },
+                  ]}
+                >
+                  <ThemedText
+                    type="small"
+                    style={{ color: paymentMethod === method ? theme.background : theme.text }}
+                  >
+                    {method.charAt(0).toUpperCase() + method.slice(1)}
+                  </ThemedText>
+                </Pressable>
+              ))}
+            </ThemedView>
+          </ThemedView>
+
+          {paymentMethod === 'fiado' && (
+            <ThemedView style={styles.fieldGroup}>
+              <ThemedText type="smallBold" style={styles.fieldLabel}>Cliente</ThemedText>
+              <Pressable
+                onPress={() => setShowClientPicker(true)}
+                style={[styles.pickerButton, { backgroundColor: theme.backgroundElement }]}
+              >
+                <ThemedText style={selectedClientId ? undefined : { color: theme.textSecondary }}>
+                  {selectedClientId
+                    ? clients.find((c) => c.id === selectedClientId)?.name
+                    : 'Selecionar cliente'}
+                </ThemedText>
+              </Pressable>
+            </ThemedView>
+          )}
+
           {/* Total */}
           {cart.length > 0 && (
             <ThemedView style={styles.totalRow}>
-              <ThemedText type="title">Total:</ThemedText>
-              <ThemedText type="title" style={{ fontWeight: '700' }}>{formatCurrency(totalCart)}</ThemedText>
+              <ThemedText style={styles.totalLabel}>Total</ThemedText>
+              <ThemedText style={styles.totalValue}>{formatCurrency(totalCart)}</ThemedText>
             </ThemedView>
           )}
 
@@ -290,20 +354,20 @@ export default function NovaVendaScreen() {
             data={filteredProducts}
             keyExtractor={(item) => item.id!}
             contentContainerStyle={{ paddingHorizontal: Spacing.four, gap: Spacing.two }}
-            renderItem={({ item }) => (
-              <Pressable
-                onPress={() => addProductToCart(item)}
-                style={[styles.productPickerItem, { backgroundColor: theme.backgroundElement }]}
-              >
-                <ThemedView style={{ flex: 1 }}>
-                  <ThemedText style={{ fontWeight: '600' }}>{item.name}</ThemedText>
-                  <ThemedText type="small" themeColor="textSecondary">
-                    {item.unit} - Estoque: {item.stockQuantity}
-                  </ThemedText>
-                </ThemedView>
-                <ThemedText style={{ fontWeight: '700' }}>{formatCurrency(item.price)}</ThemedText>
-              </Pressable>
-            )}
+              renderItem={({ item }) => (
+                <Pressable
+                  onPress={() => handleProductPress(item)}
+                  style={styles.productPickerItem}
+                >
+                  <ThemedView style={{ flex: 1 }}>
+                    <ThemedText style={{ fontWeight: '600' }}>{item.nome}</ThemedText>
+                    <ThemedText type="small" themeColor="textSecondary">
+                      {item.unidade} - Estoque: {item.estoqueAtual}
+                    </ThemedText>
+                  </ThemedView>
+                  <ThemedText style={{ fontWeight: '700' }}>{formatCurrency(item.custo)}</ThemedText>
+                </Pressable>
+              )}
             ListEmptyComponent={
               <ThemedText style={{ textAlign: 'center', marginTop: Spacing.four }} themeColor="textSecondary">
                 Nenhum produto encontrado
@@ -311,6 +375,69 @@ export default function NovaVendaScreen() {
             }
           />
         </SafeAreaView>
+      </Modal>
+
+      {/* Quantity Input Modal */}
+      <Modal visible={showQuantityModal} transparent animationType="fade" onRequestClose={() => setShowQuantityModal(false)}>
+        <Pressable style={styles.quantityOverlay} onPress={() => setShowQuantityModal(false)}>
+          <Pressable style={[styles.quantityModal, { backgroundColor: theme.background }]}>
+            <ThemedView style={styles.quantityHeader}>
+              <ThemedText type="subtitle" style={{ flex: 1 }}>
+                {quantityModalProduct?.nome}
+              </ThemedText>
+              <Pressable onPress={() => setShowQuantityModal(false)}>
+                <ThemedText type="default" themeColor="textSecondary">Cancelar</ThemedText>
+              </Pressable>
+            </ThemedView>
+
+            <ThemedView style={styles.quantityStockRow}>
+              <ThemedText type="small" themeColor="textSecondary">
+                Estoque disponível: <ThemedText type="smallBold">{quantityModalProduct?.estoqueAtual} {quantityModalProduct?.unidade}</ThemedText>
+              </ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                {formatCurrency(quantityModalProduct?.custo ?? 0)} / {quantityModalProduct?.unidade}
+              </ThemedText>
+            </ThemedView>
+
+            <ThemedView style={styles.quantityStepper}>
+              <Pressable
+                onPress={() => adjustQuantity(-1)}
+                style={[styles.qtyBtn, { backgroundColor: theme.backgroundElement }]}
+              >
+                <ThemedText style={{ fontWeight: '700', fontSize: 20 }}>-</ThemedText>
+              </Pressable>
+              <TextInput
+                style={[styles.quantityInput, { color: theme.text, backgroundColor: theme.backgroundElement }]}
+                placeholder="0"
+                placeholderTextColor={theme.textSecondary}
+                keyboardType="decimal-pad"
+                value={quantityInput}
+                onChangeText={setQuantityInput}
+                autoFocus
+              />
+              <Pressable
+                onPress={() => adjustQuantity(1)}
+                style={[styles.qtyBtn, { backgroundColor: theme.backgroundElement }]}
+              >
+                <ThemedText style={{ fontWeight: '700', fontSize: 20 }}>+</ThemedText>
+              </Pressable>
+            </ThemedView>
+
+            <ThemedView style={styles.quantitySubtotalRow}>
+              <ThemedText type="default" themeColor="textSecondary">Total</ThemedText>
+              <ThemedText type="title" style={styles.quantitySubtotalValue}>{formatCurrency(subtotalValue)}</ThemedText>
+            </ThemedView>
+
+            <Pressable
+              onPress={confirmQuantityInput}
+              style={[styles.saveButton, { backgroundColor: theme.text }]}
+            >
+              <ThemedText style={[styles.saveButtonText, { color: theme.background }]}>
+                Adicionar
+              </ThemedText>
+            </Pressable>
+          </Pressable>
+        </Pressable>
       </Modal>
 
       {/* Client Picker Modal */}
@@ -330,7 +457,7 @@ export default function NovaVendaScreen() {
             renderItem={({ item }) => (
               <Pressable
                 onPress={() => { setSelectedClientId(item.id!); setShowClientPicker(false); }}
-                style={[styles.productPickerItem, { backgroundColor: theme.backgroundElement }]}
+                style={styles.productPickerItem}
               >
                 <ThemedText style={{ fontWeight: '600' }}>{item.name}</ThemedText>
                 {item.email && <ThemedText type="small" themeColor="textSecondary">{item.email}</ThemedText>}
@@ -364,17 +491,27 @@ const styles = StyleSheet.create({
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: Spacing.two },
   addProductButton: { paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, borderRadius: Spacing.two },
   emptyCart: { paddingVertical: Spacing.four, alignItems: 'center' },
-  cartItem: { borderRadius: Spacing.three, padding: Spacing.three, gap: Spacing.two },
+  cartItem: { paddingVertical: Spacing.three, gap: Spacing.two, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(128,128,128,0.2)' },
   cartItemInfo: { gap: Spacing.half },
   cartItemActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   qtyControls: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
   qtyBtn: { width: 32, height: 32, borderRadius: Spacing.one, alignItems: 'center', justifyContent: 'center' },
-  totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: Spacing.three },
+  totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: Spacing.three, borderTopWidth: 2, borderTopColor: 'rgba(128,128,128,0.2)', marginTop: Spacing.two },
+  totalLabel: { fontSize: 20, fontWeight: '600' },
+  totalValue: { fontSize: 24, fontWeight: '700' },
   saveButton: { alignItems: 'center', justifyContent: 'center', paddingVertical: Spacing.three, borderRadius: Spacing.two, marginTop: Spacing.two },
   saveButtonText: { fontWeight: '600', fontSize: 16 },
   searchInput: { borderRadius: Spacing.two, paddingHorizontal: Spacing.three, paddingVertical: Platform.OS === 'ios' ? Spacing.three : Spacing.two, fontSize: 16, marginBottom: Spacing.three },
-  productPickerItem: { borderRadius: Spacing.three, padding: Spacing.three, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  productPickerItem: { paddingVertical: Spacing.three, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(128,128,128,0.2)' },
   modalSafe: { flex: 1 },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.four, paddingVertical: Spacing.three },
   modalTitle: { fontSize: 28, lineHeight: 32 },
+  quantityHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.two },
+  quantityOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: Spacing.four },
+  quantityModal: { width: '100%', maxWidth: 360, borderRadius: Spacing.three, padding: Spacing.four },
+  quantityStockRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.three },
+  quantityStepper: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.two, marginBottom: Spacing.three },
+  quantityInput: { borderRadius: Spacing.two, paddingHorizontal: Spacing.three, paddingVertical: Platform.OS === 'ios' ? Spacing.three : Spacing.two, fontSize: 24, textAlign: 'center', minWidth: 100 },
+  quantitySubtotalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: Spacing.two, marginBottom: Spacing.two },
+  quantitySubtotalValue: { fontSize: 28, fontWeight: '700' },
 });

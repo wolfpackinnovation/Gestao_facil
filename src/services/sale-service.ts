@@ -54,6 +54,29 @@ export async function getSaleItems(saleId: string): Promise<SaleItem[]> {
   )
 }
 
+export async function getAllSales(companyId: string): Promise<Sale[]> {
+  return getAll<Sale>(
+    Collections.sales,
+    where('companyId', '==', companyId)
+  )
+}
+
+export async function getSalesByDate(companyId: string, date: Date): Promise<Sale[]> {
+  const sales = await getAll<Sale>(
+    Collections.sales,
+    where('companyId', '==', companyId)
+  )
+  const startOfDay = new Date(date)
+  startOfDay.setHours(0, 0, 0, 0)
+  const endOfDay = new Date(date)
+  endOfDay.setHours(23, 59, 59, 999)
+  const startTimestamp = Timestamp.fromDate(startOfDay)
+  const endTimestamp = Timestamp.fromDate(endOfDay)
+  return sales
+    .filter((s) => s.createdAt && s.createdAt.toMillis() >= startTimestamp.toMillis() && s.createdAt.toMillis() <= endTimestamp.toMillis())
+    .sort((a, b) => (b.createdAt?.toMillis() ?? 0) - (a.createdAt?.toMillis() ?? 0))
+}
+
 export async function getTodaySales(companyId: string): Promise<Sale[]> {
   const sales = await getAll<Sale>(
     Collections.sales,

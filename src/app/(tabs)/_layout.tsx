@@ -11,7 +11,7 @@ const tabs: { name: string; label: string; icon: IoniconsName }[] = [
   { name: 'estoque', label: 'Estoque', icon: 'cube-outline' },
   { name: 'vendas', label: 'Vendas', icon: 'card-outline' },
   { name: 'index', label: 'Início', icon: 'home-outline' },
-  { name: 'caixa', label: 'Caixa', icon: 'cash-outline' },
+  { name: 'financeiro', label: 'Financeiro', icon: 'trending-up-outline' },
   { name: 'clientes', label: 'Clientes', icon: 'people-outline' },
 ];
 
