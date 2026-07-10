@@ -78,7 +78,7 @@ export default function SignupScreen() {
       >
         <View style={styles.header}>
           <ThemedText type="title" style={styles.title}>
-            GestãoFácil
+            GestFacil
           </ThemedText>
           <ThemedText type="default" themeColor="textSecondary">
             Crie sua conta

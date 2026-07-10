@@ -14,10 +14,11 @@ SplashScreen.preventAutoHideAsync();
 const hideHeaderRoutes = new Set(['/login', '/signup', '/notificacao', '/perfil', '/produto-detalhe', '/cliente-detalhe', '/nova-venda'])
 
 const routeTitles: Record<string, string> = {
-  'index': 'Início',
+  'index': 'GestFacil',
   'estoque': 'Estoque',
   'vendas': 'Vendas',
   'caixa': 'Caixa',
+  'financeiro': 'Financeiro',
   'clientes': 'Clientes',
   'configuracao': 'Configuração',
   'cortes': 'Cortes',
@@ -31,7 +32,7 @@ const routeTitles: Record<string, string> = {
 function getRouteTitle(pathname: string): string {
   const segments = pathname.split('/').filter(Boolean)
   const last = segments[segments.length - 1] || 'index'
-  return routeTitles[last] ?? 'GestãoFácil'
+  return routeTitles[last] ?? 'GestFacil'
 }
 
 function RootLayoutInner() {

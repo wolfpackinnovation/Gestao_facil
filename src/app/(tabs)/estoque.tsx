@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import {
   Alert,
   FlatList,
@@ -12,9 +12,11 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
+import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { Loading } from '@/utils/loading';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/contexts/auth';
@@ -59,11 +61,25 @@ export default function EstoqueScreen() {
   const [form, setForm] = useState({ ...emptyForm });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [now] = useState(() => Date.now());
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredProdutos = useMemo(() => {
+    if (!searchQuery.trim()) return produtos
+    const term = searchQuery.toLowerCase()
+    return produtos.filter(p =>
+      p.nome.toLowerCase().includes(term) ||
+      p.codigo.toLowerCase().includes(term) ||
+      p.categoria.toLowerCase().includes(term)
+    )
+  }, [produtos, searchQuery])
 
   const loadProdutos = useCallback(async () => {
     if (!companyId) return;
+    setLoading(true);
     const data = await getProdutos(companyId);
     setProdutos(data);
+    setLoading(false);
   }, [companyId]);
 
   useFocusEffect(
@@ -329,6 +345,16 @@ export default function EstoqueScreen() {
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
         <ThemedView style={styles.header}>
+          <ThemedView style={styles.searchRow}>
+            <Ionicons name="search" size={18} color={theme.textSecondary} />
+            <TextInput
+              style={[styles.searchInput, { color: theme.text }]}
+              placeholder="Buscar produto..."
+              placeholderTextColor={theme.textSecondary}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+          </ThemedView>
           <Pressable onPress={openNew} style={[styles.addButton, { backgroundColor: theme.text }]}>
             <ThemedText style={[styles.addButtonText, { color: theme.background }]}>
               + Novo
@@ -336,7 +362,7 @@ export default function EstoqueScreen() {
           </Pressable>
         </ThemedView>
 
-        {produtos.length === 0 ? (
+        {loading ? <Loading /> : filteredProdutos.length === 0 ? (
           <ThemedView style={styles.emptyState}>
             <ThemedText style={styles.emptyEmoji}>📋</ThemedText>
             <ThemedText type="subtitle" style={styles.emptyTitle}>
@@ -356,7 +382,7 @@ export default function EstoqueScreen() {
               <ThemedText type="smallBold" style={styles.colValidade}>Validade</ThemedText>
             </ThemedView>
             <FlatList
-              data={produtos}
+              data={filteredProdutos}
               keyExtractor={(item) => item.id}
               renderItem={renderProduto}
               showsVerticalScrollIndicator={false}
@@ -579,6 +605,23 @@ const styles = StyleSheet.create({
   addButtonText: {
     fontWeight: '600',
     fontSize: 14,
+  },
+  iconButton: {
+    padding: Spacing.one,
+  },
+  searchRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(128,128,128,0.45)',
+    paddingTop: Spacing.two,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    paddingVertical: Spacing.two,
   },
   emptyState: {
     flex: 1,

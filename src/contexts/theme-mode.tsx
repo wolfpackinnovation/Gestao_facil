@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type ThemeMode = 'light' | 'dark' | 'system';
 
-const STORAGE_KEY = '@gestaofacil:themeMode';
+const STORAGE_KEY = '@gestfacil:themeMode';
 
 type ThemeModeContextType = {
   themeMode: ThemeMode;

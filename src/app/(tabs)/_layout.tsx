@@ -1,9 +1,19 @@
 import { Tabs, Redirect } from 'expo-router';
-import { ActivityIndicator, View, StyleSheet } from 'react-native';
+import { ActivityIndicator, View, StyleSheet, type ColorValue } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/contexts/auth';
+
+function HomeTabIcon({ color, size, focused }: { color: ColorValue; size: number; focused?: boolean }) {
+  const theme = useTheme();
+  const circleSize = size + 28;
+  return (
+    <View style={[styles.circle, { width: circleSize, height: circleSize, borderRadius: circleSize / 2, backgroundColor: focused ? theme.primary : theme.backgroundElement }]}>
+      <Ionicons name="home-outline" size={size} color={focused ? '#ffffff' : color} />
+    </View>
+  );
+}
 
 type IoniconsName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -35,7 +45,7 @@ export default function TabLayout() {
     <Tabs
       initialRouteName="index"
       screenOptions={{
-        tabBarActiveTintColor: theme.text,
+        tabBarActiveTintColor: theme.primary,
         tabBarInactiveTintColor: theme.textSecondary,
         tabBarStyle: { backgroundColor: theme.background },
         headerShown: false,
@@ -47,9 +57,13 @@ export default function TabLayout() {
           name={tab.name}
           options={{
             title: tab.label,
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name={tab.icon} size={size} color={color} />
-            ),
+            tabBarLabel: tab.name === 'index' ? '' : tab.label,
+            tabBarIcon: ({ color, size, focused }) =>
+              tab.name === 'index' ? (
+                <HomeTabIcon color={color} size={size} focused={focused} />
+              ) : (
+                <Ionicons name={tab.icon} size={size} color={color} />
+              ),
           }}
         />
       ))}
@@ -60,6 +74,10 @@ export default function TabLayout() {
 const styles = StyleSheet.create({
   centered: {
     flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  circle: {
     alignItems: 'center',
     justifyContent: 'center',
   },

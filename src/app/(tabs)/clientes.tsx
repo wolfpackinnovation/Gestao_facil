@@ -12,9 +12,11 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
+import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { Loading } from '@/utils/loading';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import * as ClientService from '@/services/client-service';
@@ -60,6 +62,7 @@ export default function ClientesScreen() {
   const [transactions, setTransactions] = useState<{ type: 'compra' | 'recebimento'; description: string; amount: number; date: Date }[]>([]);
 
   const companyId = user?.uid ?? '';
+  const [loading, setLoading] = useState(true);
 
   async function loadTransactions(client: Client) {
     const [sales, payments] = await Promise.all([
@@ -85,6 +88,7 @@ export default function ClientesScreen() {
   }
 
   const loadClients = useCallback(async () => {
+    setLoading(true);
     const [clientsData, allSales] = await Promise.all([
       search
         ? ClientService.searchClients(companyId, search)
@@ -100,6 +104,7 @@ export default function ClientesScreen() {
       }
     }
     setDebts(debtMap);
+    setLoading(false);
   }, [companyId, search]);
 
   useFocusEffect(
@@ -280,19 +285,22 @@ export default function ClientesScreen() {
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
         <ThemedView style={styles.header}>
-          <TextInput
-            style={[styles.searchInput, { color: theme.text, backgroundColor: theme.backgroundElement }]}
-            placeholder="Buscar cliente..."
-            placeholderTextColor={theme.textSecondary}
-            value={search}
-            onChangeText={setSearch}
-          />
+          <ThemedView style={styles.searchRow}>
+            <Ionicons name="search" size={18} color={theme.textSecondary} />
+            <TextInput
+              style={[styles.searchInput, { color: theme.text }]}
+              placeholder="Buscar cliente..."
+              placeholderTextColor={theme.textSecondary}
+              value={search}
+              onChangeText={setSearch}
+            />
+          </ThemedView>
           <Pressable onPress={openNew} style={[styles.addButton, { backgroundColor: theme.text }]}>
             <ThemedText style={[styles.addButtonText, { color: theme.background }]}>+ Novo</ThemedText>
           </Pressable>
         </ThemedView>
 
-        {clients.length === 0 ? (
+        {loading ? <Loading /> : clients.length === 0 ? (
           <ThemedView style={styles.emptyState}>
             <ThemedText style={styles.emptyEmoji}>📋</ThemedText>
             <ThemedText type="subtitle" style={styles.emptyTitle}>Nenhum cliente</ThemedText>
@@ -500,12 +508,19 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     paddingVertical: Spacing.three,
   },
+  searchRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(128,128,128,0.45)',
+    paddingTop: Spacing.two,
+  },
   searchInput: {
     flex: 1,
-    borderRadius: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Platform.OS === 'ios' ? Spacing.three : Spacing.two,
-    fontSize: 16,
+    fontSize: 15,
+    paddingVertical: Spacing.two,
   },
   addButton: { paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, borderRadius: Spacing.two },
   addButtonText: { fontWeight: '600', fontSize: 14 },

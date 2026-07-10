@@ -69,7 +69,7 @@ export default function LoginScreen() {
       >
         <View style={styles.header}>
           <ThemedText type="title" style={styles.title}>
-            GestãoFácil
+            GestFacil
           </ThemedText>
           <ThemedText type="default" themeColor="textSecondary">
             Faça login para continuar

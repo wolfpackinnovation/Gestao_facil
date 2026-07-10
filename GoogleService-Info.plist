@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
 	<key>CLIENT_ID</key>
-	<string>802298074107-gns1jtfm42dokkskjpltq8kt547493k1.apps.googleusercontent.com</string>
+	<string>802298074107-4p0a1pjnhlnlolej56r371jfiqrvtavu.apps.googleusercontent.com</string>
 	<key>REVERSED_CLIENT_ID</key>
-	<string>com.googleusercontent.apps.802298074107-gns1jtfm42dokkskjpltq8kt547493k1</string>
+	<string>com.googleusercontent.apps.802298074107-4p0a1pjnhlnlolej56r371jfiqrvtavu</string>
 	<key>API_KEY</key>
 	<string>AIzaSyAM8LC36d4qcrCAR1uephs3cJ5MmyjmZ1w</string>
 	<key>GCM_SENDER_ID</key>
@@ -13,7 +13,7 @@
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
-	<string>com.wolfpack-innovation.GestaoFacil</string>
+	<string>com.wolfpack-innovation.GestFacil</string>
 	<key>PROJECT_ID</key>
 	<string>gestaofacil-2f34c</string>
 	<key>STORAGE_BUCKET</key>
@@ -29,6 +29,6 @@
 	<key>IS_SIGNIN_ENABLED</key>
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:802298074107:ios:ec7041a72577fecb0d315e</string>
+	<string>1:802298074107:ios:d647c345119df73e0d315e</string>
 </dict>
 </plist>

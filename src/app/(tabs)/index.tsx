@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { Loading } from '@/utils/loading';
 import {
   Alert,
   Animated,
@@ -64,8 +65,10 @@ export default function HomeScreen() {
 
   const today = new Date();
 
+  const [loading, setLoading] = useState(true);
   const loadData = useCallback(async () => {
     if (!companyId) return;
+    setLoading(true);
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
 
@@ -104,6 +107,7 @@ export default function HomeScreen() {
         count,
       }))
     );
+    setLoading(false);
   }, [companyId]);
 
   useEffect(() => {
@@ -186,6 +190,8 @@ export default function HomeScreen() {
     return todayTotal / todaySales.length;
   }, [todayTotal, todaySales.length]);
 
+  if (loading) return <Loading />;
+
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
@@ -197,8 +203,6 @@ export default function HomeScreen() {
               {capitalize(formatDayName(today))}, {formatDate(today)}
             </ThemedText>
           </View>
-
-          <View style={styles.divider} />
 
           {/* Sales Today */}
           <View style={styles.totalCard}>
@@ -221,8 +225,6 @@ export default function HomeScreen() {
               </View>
             </View>
           </View>
-
-          <View style={styles.divider} />
 
           {/* Stats Grid */}
           <View style={styles.statsGrid}>
@@ -250,13 +252,9 @@ export default function HomeScreen() {
             </View>
           </View>
 
-          <View style={styles.divider} />
-
           {/* Week Sales Chart */}
           <ThemedText style={styles.sectionTitle}>📊 Vendas da Semana</ThemedText>
           <WeekChart todayTotal={todayTotal} />
-
-          <View style={styles.divider} />
 
           {/* Alerts */}
           <ThemedText style={styles.sectionTitle}>⚠️ Atenção</ThemedText>
@@ -267,8 +265,6 @@ export default function HomeScreen() {
             <ThemedText style={styles.alertItem}>• 0 contas vencem hoje</ThemedText>
             <ThemedText style={styles.alertItem}>• 0 cliente possui fiado atrasado</ThemedText>
           </View>
-
-          <View style={styles.divider} />
 
           {/* Top Products */}
           <ThemedText style={styles.sectionTitle}>🔥 Produtos mais vendidos</ThemedText>
@@ -458,7 +454,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     width: '100%',
   },
-  scrollContent: { paddingBottom: Spacing.six },
+  scrollContent: { gap: Spacing.four, paddingBottom: Spacing.six },
 
   headerSection: { paddingTop: Spacing.two },
   greeting: { fontSize: 24, fontWeight: '700', lineHeight: 32 },

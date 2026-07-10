@@ -55,7 +55,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
         style={[styles.drawer, { backgroundColor: colors.background }]}>
         <ThemedView style={styles.drawerHeader}>
           <ThemedText type="subtitle" style={styles.drawerTitle}>
-            GestãoFácil
+            GestFacil
           </ThemedText>
           <Pressable onPress={onClose}>
             <SymbolView

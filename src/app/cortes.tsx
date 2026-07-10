@@ -15,6 +15,7 @@ import { useFocusEffect } from 'expo-router';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { Loading } from '@/utils/loading';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/contexts/auth';
@@ -68,11 +69,14 @@ export default function CortesScreen() {
   const [animalNome, setAnimalNome] = useState('');
   const [cortes, setCortes] = useState<CorteForm[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
 
   const loadData = useCallback(async () => {
     if (!companyId) return;
+    setLoading(true);
     const d = await getDesossas(companyId);
     setDesossas(d);
+    setLoading(false);
   }, [companyId]);
 
   useFocusEffect(
@@ -320,7 +324,7 @@ export default function CortesScreen() {
           </Pressable>
         </ThemedView>
 
-        {desossas.length === 0 ? (
+        {loading ? <Loading /> : desossas.length === 0 ? (
           <ThemedView style={styles.emptyState}>
             <ThemedText style={styles.emptyEmoji}>✂️</ThemedText>
             <ThemedText type="subtitle" style={styles.emptyTitle}>

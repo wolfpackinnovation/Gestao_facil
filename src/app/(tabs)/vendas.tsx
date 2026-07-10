@@ -13,6 +13,7 @@ import { useFocusEffect } from 'expo-router';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { Loading } from '@/utils/loading';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/contexts/auth';
@@ -44,6 +45,7 @@ export default function VendasScreen() {
   const [clients, setClients] = useState<Client[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [saleFirstItem, setSaleFirstItem] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
 
   function getProductName(productId: string): string {
     return products.find((p) => p.id === productId)?.nome ?? productId;
@@ -63,6 +65,7 @@ export default function VendasScreen() {
 
   const loadSales = useCallback(async () => {
     if (!companyId) return;
+    setLoading(true);
     const [salesData, clientsData, productsData] = await Promise.all([
       getSalesByDate(companyId, selectedDate),
       ClientService.listClients(companyId),
@@ -81,6 +84,7 @@ export default function VendasScreen() {
       }
     }));
     setSaleFirstItem(firstItemMap);
+    setLoading(false);
   }, [companyId, selectedDate]);
 
   function goToDate(days: number) {
@@ -141,71 +145,71 @@ export default function VendasScreen() {
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
-        {/* Date Navigation */}
-        <ThemedView style={styles.dateNav}>
-          <Pressable onPress={() => goToDate(-1)} style={styles.dateArrow}>
-            <ThemedText style={{ fontSize: 20 }}>←</ThemedText>
-          </Pressable>
-          <ThemedView style={{ alignItems: 'center' }}>
-            <ThemedText type="subtitle" style={styles.dateText}>
-              {formatDate(selectedDate)}
+        <ThemedView style={styles.headerContent}>
+          {/* Date Navigation */}
+           <ThemedView style={styles.dateNav}>
+             <Pressable onPress={() => goToDate(-1)} style={styles.dateArrow}>
+               <ThemedText style={{ fontSize: 18, fontWeight: '300', color: theme.textSecondary }}>{'‹'}</ThemedText>
+             </Pressable>
+             <ThemedView style={{ alignItems: 'center', gap: 2 }}>
+               <ThemedText style={styles.dateText}>
+                 {formatDate(selectedDate)}
+               </ThemedText>
+               {isToday && (
+                 <ThemedText type="small" themeColor="textSecondary">Hoje</ThemedText>
+               )}
+             </ThemedView>
+             <Pressable onPress={() => goToDate(1)} disabled={isToday} style={styles.dateArrow}>
+               <ThemedText style={{ fontSize: 18, fontWeight: '300', color: theme.textSecondary, opacity: isToday ? 0.3 : 1 }}>{'›'}</ThemedText>
+             </Pressable>
+           </ThemedView>
+
+          {/* Total do Dia */}
+          <View style={styles.totalCard}>
+            <ThemedText style={styles.totalCardLabel}>💰 Total do Dia</ThemedText>
+            <ThemedText style={styles.totalCardValue} numberOfLines={1} adjustsFontSizeToFit>
+              {formatCurrency(dayTotal)}
             </ThemedText>
-            {isToday && (
-              <ThemedText type="small" themeColor="textSecondary">Hoje</ThemedText>
-            )}
-          </ThemedView>
-          <Pressable onPress={() => goToDate(1)} disabled={isToday} style={styles.dateArrow}>
-            <ThemedText style={{ fontSize: 20, opacity: isToday ? 0.3 : 1 }}>→</ThemedText>
-          </Pressable>
-        </ThemedView>
+            <View style={styles.totalBreakdown}>
+              <View style={styles.totalBreakdownRow}>
+                {methodOrder.slice(0, 2).map((method) => {
+                  const total = totalsByMethod[method] ?? 0;
+                  return (
+                    <View key={method} style={styles.totalBreakdownItem}>
+                      <ThemedText style={styles.totalBreakdownLabel}>
+                        {paymentLabels[method]?.toUpperCase()}
+                      </ThemedText>
+                      <ThemedText style={styles.totalBreakdownValue}>
+                        {formatCurrency(total)}
+                      </ThemedText>
+                    </View>
+                  );
+                })}
+              </View>
+              <View style={styles.totalBreakdownRow}>
+                {methodOrder.slice(2, 4).map((method) => {
+                  const total = totalsByMethod[method] ?? 0;
+                  return (
+                    <View key={method} style={styles.totalBreakdownItem}>
+                      <ThemedText style={styles.totalBreakdownLabel}>
+                        {paymentLabels[method]?.toUpperCase()}
+                      </ThemedText>
+                      <ThemedText style={styles.totalBreakdownValue}>
+                        {formatCurrency(total)}
+                      </ThemedText>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          </View>
 
-        {/* Total do Dia */}
-        <View style={styles.totalCard}>
-          <ThemedText style={styles.totalCardLabel}>Total do Dia</ThemedText>
-          <ThemedText style={styles.totalCardValue}>
-            {formatCurrency(dayTotal)}
+          <ThemedText type="smallBold" themeColor="textSecondary">
+            Vendas
           </ThemedText>
-        </View>
-
-        {/* Summary by Payment Method */}
-        <ThemedView style={styles.summaryGrid}>
-          <ThemedView style={styles.summaryRow}>
-            {methodOrder.slice(0, 2).map((method) => {
-              const total = totalsByMethod[method] ?? 0;
-              return (
-                <ThemedView key={method} type="backgroundElement" style={styles.summaryCard}>
-                  <ThemedText type="smallBold" themeColor="textSecondary">
-                    {paymentLabels[method]}
-                  </ThemedText>
-                  <ThemedText style={[styles.summaryValue, method === 'fiado' && { color: '#f59e0b' }]}>
-                    {formatCurrency(total)}
-                  </ThemedText>
-                </ThemedView>
-              );
-            })}
-          </ThemedView>
-          <ThemedView style={styles.summaryRow}>
-            {methodOrder.slice(2, 4).map((method) => {
-              const total = totalsByMethod[method] ?? 0;
-              return (
-                <ThemedView key={method} type="backgroundElement" style={styles.summaryCard}>
-                  <ThemedText type="smallBold" themeColor="textSecondary">
-                    {paymentLabels[method]}
-                  </ThemedText>
-                  <ThemedText style={[styles.summaryValue, method === 'fiado' && { color: '#f59e0b' }]}>
-                    {formatCurrency(total)}
-                  </ThemedText>
-                </ThemedView>
-              );
-            })}
-          </ThemedView>
         </ThemedView>
 
-        <ThemedText type="smallBold" themeColor="textSecondary" style={{ paddingTop: Spacing.two }}>
-          Vendas
-        </ThemedText>
-
-        {sales.length === 0 ? (
+        {loading ? <Loading /> : sales.length === 0 ? (
           <ThemedView style={styles.emptyState}>
             <ThemedText style={styles.emptyEmoji}>🛒</ThemedText>
             <ThemedText type="subtitle" style={styles.emptyTitle}>Nenhuma venda</ThemedText>
@@ -274,10 +278,11 @@ export default function VendasScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  safeArea: { flex: 1, paddingHorizontal: Spacing.four, maxWidth: MaxContentWidth, alignSelf: 'center', width: '100%', gap: Spacing.two },
-  dateNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: Spacing.two },
-  dateArrow: { padding: Spacing.two },
-  dateText: { fontSize: 22, lineHeight: 28 },
+  safeArea: { flex: 1, paddingHorizontal: Spacing.four, maxWidth: MaxContentWidth, alignSelf: 'center', width: '100%' },
+  headerContent: { gap: Spacing.four },
+  dateNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.four, paddingVertical: Spacing.two },
+  dateArrow: { padding: Spacing.one },
+  dateText: { fontSize: 16, fontWeight: '600', lineHeight: 22 },
 
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing.three },
   emptyEmoji: { fontSize: 48 },
@@ -312,10 +317,29 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: '#fff',
   },
-  summaryGrid: { gap: Spacing.two },
-  summaryRow: { flexDirection: 'row', gap: Spacing.two },
-  summaryCard: { borderRadius: Spacing.three, padding: Spacing.two, flex: 1, gap: Spacing.half, alignItems: 'center' },
-  summaryValue: { fontWeight: '700', fontSize: 16 },
+  totalBreakdown: {
+    marginTop: Spacing.four,
+    paddingTop: Spacing.four,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.2)',
+    gap: Spacing.four,
+  },
+  totalBreakdownRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-evenly',
+    gap: Spacing.five,
+  },
+  totalBreakdownItem: { alignItems: 'center', gap: Spacing.one },
+  totalBreakdownLabel: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.6)',
+    letterSpacing: 1,
+  },
+  totalBreakdownValue: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#fff',
+  },
   detailRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   detailItem: { paddingVertical: Spacing.two, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(128,128,128,0.2)' },
 });

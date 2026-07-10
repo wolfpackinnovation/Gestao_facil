@@ -1,15 +1,15 @@
 {
   "expo": {
-    "name": "GestaoFacil",
-    "slug": "GestaoFacil",
+    "name": "GestFacil",
+    "slug": "GestFacil",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "scheme": "gestaofacil",
+    "scheme": "gestfacil",
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/icon.png",
-      "bundleIdentifier": "com.wolfpack-innovation.GestaoFacil"
+      "bundleIdentifier": "com.wolfpack-innovation.GestFacil"
     },
     "android": {
       "adaptiveIcon": {
@@ -19,7 +19,7 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.wolfpackinnovation.GestaoFacil"
+      "package": "com.wolfpackinnovation.GestFacil"
     },
     "web": {
       "output": "static",
