@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import {
   Alert,
   FlatList,
@@ -9,15 +9,16 @@ import {
   ScrollView,
   StyleSheet,
   TextInput,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Loading } from '@/utils/loading';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import * as ClientService from '@/services/client-service';
 import { getAllSales, updateSale } from '@/services/sale-service';
@@ -46,11 +47,25 @@ const emptyForm = {
   state: '',
 };
 
+function formatLastPurchase(date: Date): string {
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  if (diffDays === 0) return 'Hoje';
+  if (diffDays === 1) return 'Ontem';
+  if (diffDays < 30) return `há ${diffDays} dias`;
+  const diffMonths = Math.floor(diffDays / 30);
+  if (diffMonths === 1) return 'há 1 mês';
+  return `há ${diffMonths} meses`;
+}
+
 export default function ClientesScreen() {
   const theme = useTheme();
+  const router = useRouter();
   const { user } = useAuth();
   const [clients, setClients] = useState<Client[]>([]);
   const [debts, setDebts] = useState<Record<string, number>>({});
+  const [lastPurchases, setLastPurchases] = useState<Record<string, Date | null>>({});
   const [detailClient, setDetailClient] = useState<Client | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -60,6 +75,7 @@ export default function ClientesScreen() {
   const [receiveModal, setReceiveModal] = useState(false);
   const [receiveAmount, setReceiveAmount] = useState('');
   const [transactions, setTransactions] = useState<{ type: 'compra' | 'recebimento'; description: string; amount: number; date: Date }[]>([]);
+  const [filter, setFilter] = useState<'todos' | 'devendo' | 'emdia'>('todos');
 
   const companyId = user?.uid ?? '';
   const [loading, setLoading] = useState(true);
@@ -90,20 +106,29 @@ export default function ClientesScreen() {
   const loadClients = useCallback(async () => {
     setLoading(true);
     const [clientsData, allSales] = await Promise.all([
-      search
-        ? ClientService.searchClients(companyId, search)
-        : ClientService.listClients(companyId),
+      ClientService.listClients(companyId),
       getAllSales(companyId),
     ]);
     setClients(clientsData);
 
     const debtMap: Record<string, number> = {};
+    const lastPurchaseMap: Record<string, Date | null> = {};
     for (const sale of allSales) {
-      if (sale.paymentMethod === 'fiado' && sale.status !== 'concluída' && sale.clientId) {
-        debtMap[sale.clientId] = (debtMap[sale.clientId] ?? 0) + (sale.totalAmount - (sale.paidAmount ?? 0));
+      if (sale.paymentMethod === 'fiado' && sale.clientId) {
+        if (sale.status !== 'concluída') {
+          debtMap[sale.clientId] = (debtMap[sale.clientId] ?? 0) + (sale.totalAmount - (sale.paidAmount ?? 0));
+        }
+        const saleDate = sale.createdAt?.toDate();
+        if (saleDate) {
+          const existing = lastPurchaseMap[sale.clientId];
+          if (!existing || saleDate > existing) {
+            lastPurchaseMap[sale.clientId] = saleDate;
+          }
+        }
       }
     }
     setDebts(debtMap);
+    setLastPurchases(lastPurchaseMap);
     setLoading(false);
   }, [companyId, search]);
 
@@ -112,6 +137,34 @@ export default function ClientesScreen() {
       loadClients();
     }, [loadClients])
   );
+
+  const totalReceivable = useMemo(
+    () => Object.values(debts).reduce((sum, v) => sum + v, 0),
+    [debts]
+  );
+
+  const inadimplentes = useMemo(
+    () => clients.filter((c) => (debts[c.id!] ?? 0) > 0).length,
+    [clients, debts]
+  );
+
+  const filteredClients = useMemo(() => {
+    const term = search.toLowerCase();
+    return clients
+      .filter((c) => {
+        if (search) {
+          const matches =
+            c.name.toLowerCase().includes(term) ||
+            c.email?.toLowerCase().includes(term) ||
+            c.phone?.includes(term);
+          if (!matches) return false;
+        }
+        if (filter === 'devendo') return (debts[c.id!] ?? 0) > 0;
+        if (filter === 'emdia') return (debts[c.id!] ?? 0) === 0;
+        return true;
+      })
+      .sort((a, b) => (debts[b.id!] ?? 0) - (debts[a.id!] ?? 0));
+  }, [clients, debts, filter, search]);
 
   function openNew() {
     setEditingId(null);
@@ -231,27 +284,9 @@ export default function ClientesScreen() {
     }
   }
 
-  function renderClient({ item }: { item: Client }) {
-    const debt = debts[item.id!] ?? 0;
-    return (
-      <Pressable onPress={() => { setDetailClient(item); loadTransactions(item); }} style={styles.dataRow}>
-        <ThemedText style={styles.colCodigo}>cod: {item.codigo ?? '---'}</ThemedText>
-        <ThemedView style={styles.nameRow}>
-          <ThemedText style={styles.colNome} numberOfLines={1}>{item.name}</ThemedText>
-          {debt > 0 && (
-            <Pressable
-              onPress={() => { setDetailClient(item); loadTransactions(item); setReceiveAmount(''); setReceiveModal(true); }}
-              style={styles.listReceiveButton}
-            >
-              <ThemedText style={styles.listReceiveButtonText}>Receber</ThemedText>
-            </Pressable>
-          )}
-        </ThemedView>
-        <ThemedText style={[styles.colDebt, debt > 0 && { color: '#ef4444' }]}>
-          dívida: {formatCurrency(debt)}
-        </ThemedText>
-      </Pressable>
-    );
+  function handleClientPress(client: Client) {
+    setDetailClient(client);
+    loadTransactions(client);
   }
 
   function renderInput(
@@ -281,156 +316,168 @@ export default function ClientesScreen() {
     );
   }
 
+  function renderClient({ item }: { item: Client }) {
+    const debt = debts[item.id!] ?? 0;
+    const hasDebt = debt > 0;
+    const lastPurchase = lastPurchases[item.id!];
+
+    return (
+      <View style={styles.clientItem}>
+        <View style={styles.clientRow}>
+          <ThemedText style={[styles.clientDot, { color: hasDebt ? '#ef4444' : '#22c55e', fontSize: 10 }]}>●</ThemedText>
+          <View style={styles.clientInfo}>
+            <ThemedText style={styles.clientName}>{item.name}</ThemedText>
+            {item.phone ? (
+              <ThemedText style={styles.clientPhone}>📞 {item.phone}</ThemedText>
+            ) : null}
+            {lastPurchase ? (
+              <ThemedText style={styles.clientLastPurchase}>
+                Última compra: {formatLastPurchase(lastPurchase)}
+              </ThemedText>
+            ) : null}
+            <ThemedText style={[styles.clientDebt, hasDebt && { color: '#ef4444' }]}>
+              Em aberto: {formatCurrency(debt)}
+            </ThemedText>
+          </View>
+        </View>
+        <View style={styles.actionRow}>
+          <Pressable
+            onPress={() => router.push(`/cliente-detalhe?id=${item.id}`)}
+            style={[styles.actionButton, { backgroundColor: 'transparent', borderWidth: 1, borderColor: theme.textSecondary + '60' }]}
+          >
+            <ThemedText style={[styles.actionButtonText, { color: theme.text }]}>Detalhes</ThemedText>
+          </Pressable>
+          {hasDebt && (
+            <Pressable
+              onPress={() => {
+                setDetailClient(item);
+                loadTransactions(item);
+                setReceiveAmount('');
+                setReceiveModal(true);
+              }}
+              style={styles.actionButton}
+            >
+              <ThemedText style={styles.actionButtonText}>Receber</ThemedText>
+            </Pressable>
+          )}
+        </View>
+      </View>
+    );
+  }
+
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
-        <ThemedView style={styles.header}>
-          <ThemedView style={styles.searchRow}>
-            <Ionicons name="search" size={18} color={theme.textSecondary} />
-            <TextInput
-              style={[styles.searchInput, { color: theme.text }]}
-              placeholder="Buscar cliente..."
-              placeholderTextColor={theme.textSecondary}
-              value={search}
-              onChangeText={setSearch}
-            />
-          </ThemedView>
-          <Pressable onPress={openNew} style={[styles.addButton, { backgroundColor: theme.text }]}>
-            <ThemedText style={[styles.addButtonText, { color: theme.background }]}>+ Novo</ThemedText>
-          </Pressable>
-        </ThemedView>
-
-        {loading ? <Loading /> : clients.length === 0 ? (
-          <ThemedView style={styles.emptyState}>
-            <ThemedText style={styles.emptyEmoji}>📋</ThemedText>
-            <ThemedText type="subtitle" style={styles.emptyTitle}>Nenhum cliente</ThemedText>
-            <ThemedText type="default" themeColor="textSecondary" style={styles.emptyText}>
-              Cadastre seu primeiro cliente.
-            </ThemedText>
-          </ThemedView>
-        ) : (
-          <ThemedView style={styles.tableWrapper}>
-            <FlatList
-              data={clients}
-              keyExtractor={(item) => item.id!}
-              renderItem={renderClient}
-              showsVerticalScrollIndicator={false}
-            />
-          </ThemedView>
-        )}
-      </SafeAreaView>
-
-      {/* Detail Modal */}
-      <Modal visible={!!detailClient} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setDetailClient(null)}>
-        <SafeAreaView style={[styles.modalSafe, { backgroundColor: theme.background }]}>
-          <ThemedView style={styles.modalHeader}>
-            <ThemedText type="title" style={styles.modalTitle}>{detailClient?.name}</ThemedText>
-            <Pressable onPress={() => setDetailClient(null)}>
-              <ThemedText type="default" themeColor="textSecondary">Fechar</ThemedText>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+          {/* Header */}
+          <View style={styles.header}>
+            <ThemedText style={styles.headerTitle}>👤 Clientes</ThemedText>
+            <Pressable onPress={openNew} style={[styles.addButton, { backgroundColor: theme.text }]}>
+              <ThemedText style={[styles.addButtonText, { color: theme.background }]}>+ Novo</ThemedText>
             </Pressable>
-          </ThemedView>
-          <ScrollView contentContainerStyle={styles.modalScrollContent}>
-            <ThemedView style={styles.detailCard}>
-              <ThemedText type="small" themeColor="textSecondary">Código</ThemedText>
-              <ThemedText style={{ fontWeight: '500' }}>{detailClient?.codigo || '---'}</ThemedText>
-            </ThemedView>
-            <ThemedView style={styles.detailCard}>
-              <ThemedText type="small" themeColor="textSecondary">Email</ThemedText>
-              <ThemedText style={{ fontWeight: '500' }}>{detailClient?.email || '---'}</ThemedText>
-            </ThemedView>
-            <ThemedView style={styles.detailCard}>
-              <ThemedText type="small" themeColor="textSecondary">Telefone</ThemedText>
-              <ThemedText style={{ fontWeight: '500' }}>{detailClient?.phone || '---'}</ThemedText>
-            </ThemedView>
-            <ThemedView style={styles.detailCard}>
-              <ThemedText type="small" themeColor="textSecondary">Endereço</ThemedText>
-              <ThemedText style={{ fontWeight: '500' }}>
-                {detailClient?.address ? `${detailClient.address}${detailClient?.addressNumber ? `, ${detailClient.addressNumber}` : ''}` : '---'}
-              </ThemedText>
-            </ThemedView>
-            <ThemedView style={styles.detailCard}>
-              <ThemedText type="small" themeColor="textSecondary">Cidade / Estado</ThemedText>
-              <ThemedText style={{ fontWeight: '500' }}>
-                {detailClient?.city ? `${detailClient.city}${detailClient.state ? `/${detailClient.state}` : ''}` : '---'}
-              </ThemedText>
-            </ThemedView>
-            <ThemedView style={[styles.detailCard, { borderTopWidth: 2, borderTopColor: 'rgba(128,128,128,0.2)', marginTop: Spacing.two }]}>
-              <ThemedText type="small" themeColor="textSecondary">Dívida Total</ThemedText>
-              <ThemedText style={{ fontWeight: '700', fontSize: 20, color: '#ef4444' }}>
-                {formatCurrency(debts[detailClient?.id ?? ''] ?? 0)}
-              </ThemedText>
-            </ThemedView>
-            {(debts[detailClient?.id ?? ''] ?? 0) > 0 && (
-              <Pressable onPress={() => { setReceiveAmount(''); setReceiveModal(true); }} style={styles.receiveButton}>
-                <ThemedText style={styles.receiveButtonText}>Receber</ThemedText>
-              </Pressable>
-            )}
-            <Pressable
-              onPress={() => {
-                const id = detailClient?.id;
-                const name = detailClient?.name;
-                setDetailClient(null);
-                if (id) confirmDelete(id, name ?? '');
-              }}
-              style={styles.deleteButton}
-            >
-              <ThemedText style={styles.deleteButtonText}>Excluir Cliente</ThemedText>
-            </Pressable>
+          </View>
 
-            <ThemedView style={[styles.detailCard, { borderTopWidth: 2, borderTopColor: 'rgba(128,128,128,0.2)', marginTop: Spacing.six }]}>
-              <ThemedText type="smallBold" style={{ letterSpacing: 0.5 }}>HISTÓRICO</ThemedText>
-            </ThemedView>
-            {transactions.length === 0 ? (
-              <ThemedText type="small" themeColor="textSecondary">Nenhuma transação</ThemedText>
-            ) : (
-              transactions.map((tx, idx) => (
-                <ThemedView key={idx} style={styles.txRow}>
-                  <ThemedView style={{ flex: 1 }}>
-                    <ThemedText style={{ fontWeight: '500', fontSize: 14 }}>{tx.description}</ThemedText>
-                    <ThemedText type="small" themeColor="textSecondary">
-                      {tx.date.toLocaleDateString('pt-BR')}
+          {loading ? <Loading /> : (
+            <>
+              {/* Stats */}
+              <View style={[styles.statCard, { backgroundColor: theme.backgroundElement }]}>
+                <ThemedText style={styles.statLabel}>Saldo a Receber</ThemedText>
+                <ThemedText style={styles.statValue}>{formatCurrency(totalReceivable)}</ThemedText>
+              </View>
+              <View style={styles.statsRow}>
+                <View style={[styles.statCardSmall, { backgroundColor: theme.backgroundElement }]}>
+                  <ThemedText style={styles.statLabel}>Clientes</ThemedText>
+                  <ThemedText style={styles.statValue}>{clients.length}</ThemedText>
+                </View>
+                <View style={[styles.statCardSmall, { backgroundColor: theme.backgroundElement }]}>
+                  <ThemedText style={styles.statLabel}>Inadimplentes</ThemedText>
+                  <ThemedText style={[styles.statValue, { color: '#ef4444' }]}>{inadimplentes}</ThemedText>
+                </View>
+              </View>
+
+              {/* Search */}
+              <View style={[styles.searchRow, { backgroundColor: theme.backgroundElement }]}>
+                <Ionicons name="search" size={18} color={theme.textSecondary} />
+                <TextInput
+                  style={[styles.searchInput, { color: theme.text }]}
+                  placeholder="Buscar cliente..."
+                  placeholderTextColor={theme.textSecondary}
+                  value={search}
+                  onChangeText={setSearch}
+                />
+              </View>
+
+              {/* Filter Tabs */}
+              <View style={styles.filterRow}>
+                {(['todos', 'devendo', 'emdia'] as const).map((f) => (
+                  <Pressable key={f} onPress={() => setFilter(f)} style={styles.filterTab}>
+                    <ThemedText
+                      style={[
+                        styles.filterTabText,
+                        { color: filter === f ? theme.text : theme.textSecondary },
+                      ]}
+                    >
+                      {f === 'todos' ? 'Todos' : f === 'devendo' ? 'Devendo' : 'Em dia'}
                     </ThemedText>
-                  </ThemedView>
-                  <ThemedText style={{ fontWeight: '600', color: tx.type === 'recebimento' ? '#22c55e' : '#ef4444' }}>
-                    {tx.type === 'recebimento' ? '+' : '-'}{formatCurrency(tx.amount)}
+                    {filter === f && <View style={[styles.activeBar, { backgroundColor: theme.text }]} />}
+                  </Pressable>
+                ))}
+              </View>
+
+              {/* Client List */}
+              {filteredClients.length === 0 ? (
+                <ThemedView style={styles.emptyState}>
+                  <ThemedText style={styles.emptyEmoji}>📋</ThemedText>
+                  <ThemedText type="subtitle" style={styles.emptyTitle}>
+                    {filter === 'todos' ? 'Nenhum cliente' : filter === 'devendo' ? 'Nenhum cliente devendo' : 'Nenhum cliente em dia'}
                   </ThemedText>
                 </ThemedView>
-              ))
-            )}
-          </ScrollView>
-          {receiveModal && (
-            <ThemedView style={[StyleSheet.absoluteFill, { justifyContent: 'flex-end' }]}>
-              <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.4)' }]} onPress={() => setReceiveModal(false)} />
-              <ThemedView style={[styles.receiveSheet, { backgroundColor: theme.background }]}>
-                <ThemedView style={styles.receiveHandle} />
-                <ThemedText style={{ fontWeight: '700', fontSize: 18, marginBottom: Spacing.three }}>
-                  Receber de {detailClient?.name}
-                </ThemedText>
-                <ThemedText type="small" themeColor="textSecondary" style={{ marginBottom: Spacing.one }}>
-                  Dívida total: {formatCurrency(debts[detailClient?.id ?? ''] ?? 0)}
-                </ThemedText>
-                <TextInput
-                  style={[styles.receiveInput, { color: theme.text, backgroundColor: theme.backgroundElement }]}
-                  placeholder="R$ 0,00"
-                  placeholderTextColor={theme.textSecondary}
-                  keyboardType="number-pad"
-                  value={receiveAmount}
-                  onChangeText={(v) => setReceiveAmount(formatCurrencyInput(v))}
-                />
-                <ThemedView style={styles.receiveActions}>
-                  <Pressable onPress={() => setReceiveModal(false)} style={styles.receiveCancel}>
-                    <ThemedText style={{ fontWeight: '600' }}>Cancelar</ThemedText>
-                  </Pressable>
-                  <Pressable onPress={handleReceivePayment} style={[styles.receiveConfirm, { backgroundColor: theme.text }]}>
-                    <ThemedText style={{ fontWeight: '600', color: theme.background }}>Confirmar</ThemedText>
-                  </Pressable>
-                </ThemedView>
-              </ThemedView>
-            </ThemedView>
+              ) : (
+                filteredClients.map((client, idx) => (
+                  <View key={client.id}>
+                    {renderClient({ item: client })}
+                    {idx < filteredClients.length - 1 && <View style={styles.divider} />}
+                  </View>
+                ))
+              )}
+            </>
           )}
-        </SafeAreaView>
-      </Modal>
+        </ScrollView>
+      </SafeAreaView>
 
+      {/* Receive Sheet */}
+      {receiveModal && (
+        <ThemedView style={[StyleSheet.absoluteFill, { justifyContent: 'flex-end' }]}>
+          <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.4)' }]} onPress={() => setReceiveModal(false)} />
+          <ThemedView style={[styles.receiveSheet, { backgroundColor: theme.background }]}>
+            <ThemedView style={styles.receiveHandle} />
+            <ThemedText style={{ fontWeight: '700', fontSize: 18, marginBottom: Spacing.three }}>
+              Receber de {detailClient?.name}
+            </ThemedText>
+            <ThemedText type="small" themeColor="textSecondary" style={{ marginBottom: Spacing.one }}>
+              Dívida total: {formatCurrency(debts[detailClient?.id ?? ''] ?? 0)}
+            </ThemedText>
+            <TextInput
+              style={[styles.receiveInput, { color: theme.text, backgroundColor: theme.backgroundElement }]}
+              placeholder="R$ 0,00"
+              placeholderTextColor={theme.textSecondary}
+              keyboardType="number-pad"
+              value={receiveAmount}
+              onChangeText={(v) => setReceiveAmount(formatCurrencyInput(v))}
+            />
+            <ThemedView style={styles.receiveActions}>
+              <Pressable onPress={() => setReceiveModal(false)} style={styles.receiveCancel}>
+                <ThemedText style={{ fontWeight: '600' }}>Cancelar</ThemedText>
+              </Pressable>
+              <Pressable onPress={handleReceivePayment} style={[styles.receiveConfirm, { backgroundColor: theme.text }]}>
+                <ThemedText style={{ fontWeight: '600', color: theme.background }}>Confirmar</ThemedText>
+              </Pressable>
+            </ThemedView>
+          </ThemedView>
+        </ThemedView>
+      )}
+
+      {/* New/Edit Modal */}
       <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={closeModal}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -481,8 +528,6 @@ export default function ClientesScreen() {
                 </ThemedView>
               </ThemedView>
 
-
-
               <Pressable
                 onPress={handleSave}
                 style={[styles.saveButton, { backgroundColor: theme.text }]}
@@ -502,63 +547,97 @@ export default function ClientesScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1, paddingHorizontal: Spacing.four, maxWidth: MaxContentWidth, alignSelf: 'center', width: '100%' },
+  scrollContent: { paddingBottom: Spacing.six },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.two,
+    justifyContent: 'space-between',
     paddingVertical: Spacing.three,
   },
+  headerTitle: { fontSize: 24, fontWeight: '700' },
+  addButton: { paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, borderRadius: Spacing.two },
+  addButtonText: { fontWeight: '600', fontSize: 14 },
   searchRow: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(128,128,128,0.45)',
-    paddingTop: Spacing.two,
+    borderRadius: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.one,
   },
-  searchInput: {
-    flex: 1,
-    fontSize: 15,
-    paddingVertical: Spacing.two,
-  },
-  addButton: { paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, borderRadius: Spacing.two },
-  addButtonText: { fontWeight: '600', fontSize: 14 },
-  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing.three, paddingHorizontal: Spacing.four },
-  emptyEmoji: { fontSize: 48 },
-  emptyTitle: { textAlign: 'center' },
-  emptyText: { textAlign: 'center' },
-  tableWrapper: { flex: 1 },
-  tableHeader: {
+  searchInput: { flex: 1, fontSize: 15, paddingVertical: Spacing.two },
+  filterRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    borderBottomWidth: 2,
-    borderBottomColor: '#cccccc',
-  },
-  dataRow: {
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 1,
     borderBottomColor: 'rgba(128,128,128,0.2)',
+    marginBottom: Spacing.two,
   },
-  colCodigo: { fontSize: 12, fontWeight: '600', opacity: 0.5, marginBottom: Spacing.half },
-  nameRow: {
-    flexDirection: 'row',
+  filterTab: {
+    flex: 1,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: Spacing.half,
+    paddingVertical: Spacing.two + 2,
+    position: 'relative',
   },
-  colNome: { fontSize: 16, fontWeight: '600', flex: 1 },
-  colDebt: { fontSize: 13, fontWeight: '500' },
-  listReceiveButton: {
-    backgroundColor: '#22c55e',
+  filterTabText: { fontWeight: '600', fontSize: 14 },
+  activeBar: {
+    position: 'absolute',
+    bottom: -1,
+    left: 0,
+    right: 0,
+    height: 2,
+    borderRadius: 1,
+  },
+  statCard: {
+    borderRadius: Spacing.three,
+    padding: Spacing.three,
+    alignItems: 'center',
+    marginBottom: Spacing.two,
+  },
+  statLabel: { fontSize: 13, opacity: 0.6, marginBottom: Spacing.half },
+  statValue: { fontSize: 24, fontWeight: '700' },
+  statsRow: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+    marginBottom: Spacing.two,
+  },
+  statCardSmall: {
+    flex: 1,
+    borderRadius: Spacing.three,
+    padding: Spacing.three,
+    alignItems: 'center',
+  },
+  divider: { height: 1, backgroundColor: 'rgba(128,128,128,0.15)', marginVertical: Spacing.two },
+  clientItem: {
+    paddingVertical: Spacing.two,
+  },
+  clientRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.two,
+  },
+  clientDot: { fontSize: 16, marginTop: 2 },
+  clientInfo: { flex: 1, gap: 2 },
+  clientName: { fontSize: 16, fontWeight: '600' },
+  clientPhone: { fontSize: 13, opacity: 0.7, marginTop: 1 },
+  clientLastPurchase: { fontSize: 13, opacity: 0.7, marginTop: 1 },
+  clientDebt: { fontSize: 14, fontWeight: '500', marginTop: 2 },
+  actionRow: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+    marginTop: Spacing.one,
+  },
+  actionButton: {
+    flex: 1,
+    backgroundColor: '#059669',
     paddingVertical: Spacing.one + 2,
     paddingHorizontal: Spacing.three,
     borderRadius: Spacing.two,
+    alignItems: 'center',
   },
-  listReceiveButtonText: { color: '#ffffff', fontWeight: '600', fontSize: 13 },
+  actionButtonText: { color: '#ffffff', fontWeight: '600', fontSize: 13 },
+  emptyState: { alignItems: 'center', justifyContent: 'center', gap: Spacing.three, paddingVertical: Spacing.six },
+  emptyEmoji: { fontSize: 48 },
+  emptyTitle: { textAlign: 'center' },
   detailCard: { gap: Spacing.half, paddingVertical: Spacing.two },
   modalContainer: { flex: 1 },
   modalSafe: { flex: 1 },

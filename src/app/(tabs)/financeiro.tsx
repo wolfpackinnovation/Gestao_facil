@@ -2,14 +2,18 @@ import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import {
   Alert,
   Animated,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
+  TextInput,
   View,
   TouchableWithoutFeedback,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -17,19 +21,9 @@ import { Loading } from '@/utils/loading';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/contexts/auth';
-import { getSalesByDate, getSaleItems } from '@/services/sale-service';
-import { getAllSales } from '@/services/sale-service';
-import * as CashService from '@/services/cash-service';
-import * as ClientService from '@/services/client-service';
-import type { CashRegister, Sale } from '@/types/schema';
-import {
-  getDespesas,
-  createDespesa,
-  deleteDespesa,
-  CATEGORIAS_DESPESA,
-  type Despesa,
-} from '@/services/despesa-service';
-import { formatCurrency } from '@/utils/format';
+import { getSalesByDate, getAllSales } from '@/services/sale-service';
+import { getDespesas, createDespesa, CATEGORIAS_DESPESA, type CategoriaDespesa, type Despesa } from '@/services/despesa-service';
+import { formatCurrency, formatCurrencyInput, parseCurrencyInput, formatDateInput } from '@/utils/format';
 
 const MONTHS = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -48,7 +42,7 @@ function getMonthRange(ref: Date): { start: Date; end: Date } {
 
 async function getSalesInPeriod(companyId: string, ref: Date) {
   const { start, end } = getMonthRange(ref);
-  const days: Sale[] = [];
+  const days: any[] = [];
   const current = new Date(start);
   while (current <= end) {
     const daySales = await getSalesByDate(companyId, current);
@@ -68,32 +62,40 @@ function filterDespesasByPeriod(despesas: Despesa[], ref: Date): Despesa[] {
   });
 }
 
+function isPaid(sale: any): boolean {
+  return sale.status === 'concluída' || (sale.paymentMethod && sale.paymentMethod !== 'fiado');
+}
+
 export default function FinanceiroScreen() {
   const theme = useTheme();
+  const router = useRouter();
   const { user } = useAuth();
   const companyId = user?.uid ?? '';
 
   const [referenceDate, setReferenceDate] = useState(() => new Date());
   const [loading, setLoading] = useState(true);
-  const [sales, setSales] = useState<Sale[]>([]);
-  const [allSales, setAllSales] = useState<Sale[]>([]);
-  const [registers, setRegisters] = useState<CashRegister[]>([]);
+  const [monthSales, setMonthSales] = useState<any[]>([]);
+  const [allSales, setAllSales] = useState<any[]>([]);
   const [despesas, setDespesas] = useState<Despesa[]>([]);
   const [fabOpen, setFabOpen] = useState(false);
+  const [despesaModal, setDespesaModal] = useState(false);
+  const [despesaDesc, setDespesaDesc] = useState('');
+  const [despesaValor, setDespesaValor] = useState('');
+  const [despesaCategoria, setDespesaCategoria] = useState<CategoriaDespesa>('Outros');
+  const [despesaObservacao, setDespesaObservacao] = useState('');
+  const [despesaVencimento, setDespesaVencimento] = useState('');
   const fabAnim = useRef(new Animated.Value(0)).current;
 
   const loadData = useCallback(async () => {
     if (!companyId) return;
     setLoading(true);
-    const [salesData, allSalesData, registersData, despesasData] = await Promise.all([
-      getSalesInPeriod(companyId, referenceDate),
-      getAllSales(companyId),
-      CashService.listCashRegisters(companyId),
+    const [salesData, allSalesData, despesasData] = await Promise.all([
+      getSalesInPeriod(companyId, referenceDate).catch(() => []),
+      getAllSales(companyId).catch(() => []),
       getDespesas(companyId),
     ]);
-    setSales(salesData);
+    setMonthSales(salesData);
     setAllSales(allSalesData);
-    setRegisters(registersData);
     setDespesas(despesasData);
     setLoading(false);
   }, [companyId, referenceDate]);
@@ -112,57 +114,46 @@ export default function FinanceiroScreen() {
     }).start();
   }, [fabOpen, fabAnim]);
 
-  const grandTotal = sales.reduce((sum, s) => sum + s.totalAmount, 0);
-  const despesasPeriodo = filterDespesasByPeriod(despesas, referenceDate);
-  const totalDespesas = despesasPeriodo.reduce((s, d) => s + d.valor, 0);
-  const lucro = grandTotal - totalDespesas;
-  const percentChange = useMemo(() => {
-    const prev = new Date(referenceDate);
-    prev.setMonth(prev.getMonth() - 1);
-    return 8;
-  }, [referenceDate]);
+  const receitasRecebidas = useMemo(() => {
+    return monthSales.filter(isPaid).reduce((sum, s) => sum + s.totalAmount, 0);
+  }, [monthSales]);
 
-  const fiadoTotal = allSales
-    .filter((s) => s.paymentMethod === 'fiado' && s.status !== 'concluída')
-    .reduce((sum, s) => sum + (s.totalAmount - (s.paidAmount ?? 0)), 0);
+  const receitasAReceber = useMemo(() => {
+    return allSales
+      .filter((s) => s.status !== 'concluída' && s.paymentMethod === 'fiado')
+      .reduce((sum, s) => sum + (s.totalAmount - (s.paidAmount ?? 0)), 0);
+  }, [allSales]);
 
-  const receberHoje = allSales
-    .filter((s) => {
-      const d = s.createdAt?.toDate?.() ?? new Date();
-      const today = new Date();
-      return s.paymentMethod === 'fiado' && s.status !== 'concluída' &&
-        d.toDateString() === today.toDateString();
-    })
-    .reduce((sum, s) => sum + (s.totalAmount - (s.paidAmount ?? 0)), 0);
+  const despesasPeriodo = useMemo(() => filterDespesasByPeriod(despesas, referenceDate), [despesas, referenceDate]);
+  const despesasPagas = useMemo(() =>
+    despesasPeriodo.filter((d) => !d.vencimento).reduce((s, d) => s + d.valor, 0),
+  [despesasPeriodo]);
+  const despesasAPagar = useMemo(() =>
+    despesasPeriodo.filter((d) => d.vencimento).reduce((s, d) => s + d.valor, 0),
+  [despesasPeriodo]);
 
-  const receberAmanha = allSales
-    .filter((s) => {
-      const d = s.createdAt?.toDate?.() ?? new Date();
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      return s.paymentMethod === 'fiado' && s.status !== 'concluída' &&
-        d.toDateString() === tomorrow.toDateString();
-    })
-    .reduce((sum, s) => sum + (s.totalAmount - (s.paidAmount ?? 0)), 0);
-
-  const topDespesas = [...despesasPeriodo]
-    .sort((a, b) => b.valor - a.valor)
-    .slice(0, 3);
-
-  const movimentacoes = useMemo(() => {
-    const items: { type: 'receita' | 'despesa' | 'recebimento'; desc: string; amount: number; date: Date }[] = [];
-    for (const s of sales.slice(0, 5)) {
-      items.push({ type: 'receita', desc: `Venda ${s.number}`, amount: s.totalAmount, date: s.createdAt?.toDate?.() ?? new Date() });
+  const dailyRevenue = useMemo(() => {
+    if (monthSales.length === 0) return [];
+    const daysInMonth = new Date(referenceDate.getFullYear(), referenceDate.getMonth() + 1, 0).getDate();
+    const result: { day: number; value: number; label: string }[] = [];
+    for (let d = 1; d <= daysInMonth; d++) {
+      const day = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), d);
+      const dayTotal = monthSales
+        .filter((s) => {
+          const sd = s.createdAt?.toDate?.() ?? new Date();
+          return sd.getDate() === d && sd.getMonth() === referenceDate.getMonth() && sd.getFullYear() === referenceDate.getFullYear();
+        })
+        .reduce((sum: number, s: any) => sum + s.totalAmount, 0);
+      if (dayTotal > 0) {
+        result.push({ day: d, value: dayTotal, label: String(d) });
+      }
     }
-    for (const d of despesasPeriodo.slice(0, 5)) {
-      items.push({ type: 'despesa', desc: d.descricao, amount: -d.valor, date: new Date(d.data) });
-    }
-    const recebimentos = allSales.filter((s) => s.paidAmount && s.paidAmount > 0).slice(0, 3);
-    for (const s of recebimentos) {
-      items.push({ type: 'recebimento', desc: `Recebimento ${s.number}`, amount: s.paidAmount ?? 0, date: s.createdAt?.toDate?.() ?? new Date() });
-    }
-    return items.sort((a, b) => b.date.getTime() - a.date.getTime()).slice(0, 10);
-  }, [sales, despesasPeriodo, allSales]);
+    return result;
+  }, [monthSales, referenceDate]);
+
+  const maxDailyRevenue = Math.max(...dailyRevenue.map((r) => r.value), 1);
+
+  const lucroRealizado = receitasRecebidas - despesasPagas;
 
   const currentMonth = referenceDate.getMonth();
   const currentYear = referenceDate.getFullYear();
@@ -171,7 +162,50 @@ export default function FinanceiroScreen() {
     setReferenceDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + delta));
   }
 
-  const divider = () => <View style={[styles.divider, { backgroundColor: theme.textSecondary + '30' }]} />;
+  function handleAddDespesa() {
+    setFabOpen(false);
+    setDespesaDesc('');
+    setDespesaValor('');
+    setDespesaCategoria('Outros');
+    setDespesaObservacao('');
+    setDespesaVencimento('');
+    setDespesaModal(true);
+  }
+
+  async function handleSaveDespesa() {
+    if (!companyId || !despesaDesc.trim() || !despesaValor.trim()) {
+      Alert.alert('Campos obrigatórios', 'Preencha a descrição e o valor.');
+      return;
+    }
+    const valor = parseCurrencyInput(despesaValor);
+    if (valor <= 0) {
+      Alert.alert('Valor inválido', 'Digite um valor válido.');
+      return;
+    }
+    try {
+      await createDespesa({
+        companyId,
+        descricao: despesaDesc.trim(),
+        valor,
+        categoria: despesaCategoria,
+        data: new Date().toISOString().slice(0, 10),
+        observacao: despesaObservacao.trim(),
+        vencimento: despesaVencimento.trim() || undefined,
+      });
+      setDespesaModal(false);
+      await loadData();
+      Alert.alert('Despesa registrada', `R$ ${valor.toFixed(2)} em "${despesaDesc.trim()}"`);
+    } catch (e: any) {
+      Alert.alert('Erro', e?.message ?? 'Erro ao salvar despesa.');
+    }
+  }
+
+  const cards = [
+    { key: 'recebidas', label: 'Receitas Recebidas', value: receitasRecebidas, color: '#16A34A' },
+    { key: 'areceber', label: 'Receitas a Receber', value: receitasAReceber, color: '#F59E0B' },
+    { key: 'despesas', label: 'Despesas Pagas', value: despesasPagas, color: '#DC2626' },
+    { key: 'apagar', label: 'Despesas a Pagar', value: despesasAPagar, color: '#6B7280' },
+  ];
 
   return (
     <ThemedView style={styles.container}>
@@ -191,140 +225,74 @@ export default function FinanceiroScreen() {
               </Pressable>
             </ThemedView>
 
-            {/* Saldo do Mês */}
-            <View style={styles.saldoCard}>
-              <ThemedText style={styles.saldoLabel}>💰 Saldo do Mês</ThemedText>
-              <ThemedText style={styles.saldoValue} numberOfLines={1} adjustsFontSizeToFit>
-                {formatCurrency(lucro)}
-              </ThemedText>
-              <ThemedText style={styles.saldoChange}>
-                ↑ +8% este mês
-              </ThemedText>
-              <View style={styles.saldoBreakdown}>
-                <View style={styles.saldoBreakdownItem}>
-                  <ThemedText style={styles.saldoBreakdownLabel}>RECEITAS</ThemedText>
-                  <ThemedText style={styles.saldoBreakdownValue}>
-                    {formatCurrency(grandTotal)}
-                  </ThemedText>
-                </View>
-                <View style={styles.saldoBreakdownItem}>
-                  <ThemedText style={styles.saldoBreakdownLabel}>DESPESAS</ThemedText>
-                  <ThemedText style={styles.saldoBreakdownValue}>
-                    {formatCurrency(totalDespesas)}
-                  </ThemedText>
-                </View>
-              </View>
-            </View>
+            {/* Lucro Realizado */}
+            <ThemedView style={[styles.lucroCard, { backgroundColor: lucroRealizado >= 0 ? '#16A34A' : '#DC2626' }]}>
+              <ThemedText style={styles.lucroLabel}>Lucro Realizado</ThemedText>
+              <ThemedText style={styles.lucroValue}>{formatCurrency(lucroRealizado)}</ThemedText>
+              <ThemedText style={styles.lucroSub}>Receitas recebidas - Despesas pagas</ThemedText>
+            </ThemedView>
 
-            {/* Fluxo de Caixa */}
-            <ThemedText style={styles.sectionTitle}>Fluxo de Caixa</ThemedText>
-            <ThemedView style={[styles.chartBox, { backgroundColor: theme.backgroundElement }]}>
-              <View style={styles.chartBars}>
-                {Array.from({ length: 7 }, (_, i) => {
-                  const day = new Date();
-                  day.setDate(day.getDate() - (6 - i));
-                  const daySales = sales.filter((s) => {
-                    const d = s.createdAt?.toDate?.() ?? new Date();
-                    return d.toDateString() === day.toDateString();
-                  });
-                  const dayTotal = daySales.reduce((sum, s) => sum + s.totalAmount, 0);
-                  const maxVal = Math.max(...sales.map((s) => s.totalAmount), 1);
-                  const height = Math.max((dayTotal / (grandTotal || 1)) * 100, 4);
-                  const isToday = i === 6;
-                  return (
-                    <View key={i} style={styles.chartCol}>
+            {/* Summary Cards */}
+            <ThemedView style={styles.cardsGrid}>
+              {cards.map((card) => (
+                <Pressable
+                  key={card.key}
+                  onPress={() => router.push('/financeiro-detalhe?type=' + card.key as any)}
+                  style={[styles.card, { backgroundColor: card.color + '12' }]}
+                >
+                  <ThemedText style={[styles.cardLabel, { color: card.color }]}>{card.label}</ThemedText>
+                  <ThemedText style={[styles.cardValue, { color: card.color }]}>
+                    {formatCurrency(card.value)}
+                  </ThemedText>
+                </Pressable>
+              ))}
+            </ThemedView>
+
+            {/* Gráfico de Receitas vs Despesas */}
+            {(receitasRecebidas > 0 || despesasPagas > 0) && (
+              <ThemedView style={styles.chartCard}>
+                <ThemedText style={styles.chartTitle}>Receitas vs Despesas</ThemedText>
+                <View style={styles.barStack}>
+                  <View style={{ flex: receitasRecebidas || 1 }}>
+                    <View style={[styles.barSegment, { backgroundColor: '#16A34A', height: 8, borderTopLeftRadius: 4, borderBottomLeftRadius: 4 }]} />
+                  </View>
+                  <View style={{ flex: despesasPagas || 1 }}>
+                    <View style={[styles.barSegment, { backgroundColor: '#DC2626', height: 8 }]} />
+                  </View>
+                </View>
+                <View style={styles.barLegend}>
+                  <ThemedText style={styles.legendItem}>
+                    <ThemedText style={{ color: '#16A34A', fontWeight: '600' }}>●</ThemedText> Receitas {formatCurrency(receitasRecebidas)}
+                  </ThemedText>
+                  <ThemedText style={styles.legendItem}>
+                    <ThemedText style={{ color: '#DC2626', fontWeight: '600' }}>●</ThemedText> Despesas {formatCurrency(despesasPagas)}
+                  </ThemedText>
+                </View>
+              </ThemedView>
+            )}
+
+            {/* Gráfico de Receitas Diárias */}
+            {dailyRevenue.length > 0 && (
+              <ThemedView style={styles.chartCard}>
+                <ThemedText style={styles.chartTitle}>Receitas Diárias</ThemedText>
+                <View style={styles.dailyChart}>
+                  {dailyRevenue.map((r) => (
+                    <View key={r.day} style={styles.dailyCol}>
                       <View
                         style={[
-                          styles.chartBar,
+                          styles.dailyBar,
                           {
-                            height,
-                            backgroundColor: isToday ? '#16A34A' : theme.textSecondary + '60',
+                            height: Math.max((r.value / maxDailyRevenue) * 80, 4),
+                            backgroundColor: '#16A34A',
                           },
                         ]}
                       />
-                      <ThemedText style={styles.chartLabel}>
-                        {day.toLocaleDateString('pt-BR', { weekday: 'short' }).slice(0, 3)}
-                      </ThemedText>
+                      <ThemedText style={styles.dailyLabel}>{r.label}</ThemedText>
                     </View>
-                  );
-                })}
-              </View>
-            </ThemedView>
-
-            {divider()}
-
-            {/* Contas a Receber */}
-            <ThemedText style={styles.sectionTitle}>Contas a Receber</ThemedText>
-            <ThemedView style={styles.receberCard}>
-              <ThemedView style={styles.receberItem}>
-                <ThemedText style={styles.receberLabel}>• Hoje</ThemedText>
-                <ThemedText style={[styles.receberValue, { color: '#16A34A' }]}>
-                  {formatCurrency(receberHoje || fiadoTotal * 0.3)}
-                </ThemedText>
+                  ))}
+                </View>
               </ThemedView>
-              <ThemedView style={styles.receberItem}>
-                <ThemedText style={styles.receberLabel}>• Amanhã</ThemedText>
-                <ThemedText style={[styles.receberValue, { color: '#16A34A' }]}>
-                  {formatCurrency(receberAmanha || fiadoTotal * 0.1)}
-                </ThemedText>
-              </ThemedView>
-              {fiadoTotal > 0 && (
-                <ThemedView style={styles.receberTotal}>
-                  <ThemedText style={styles.receberLabel}>Total a Receber</ThemedText>
-                  <ThemedText style={[styles.receberValue, { color: '#16A34A', fontWeight: '700' }]}>
-                    {formatCurrency(fiadoTotal)}
-                  </ThemedText>
-                </ThemedView>
-              )}
-            </ThemedView>
-
-            {divider()}
-
-            {/* Contas a Pagar */}
-            <ThemedText style={styles.sectionTitle}>Contas a Pagar</ThemedText>
-            <ThemedView style={styles.pagarCard}>
-              {topDespesas.length === 0 ? (
-                <ThemedText style={styles.emptyText}>Nenhuma despesa no período</ThemedText>
-              ) : (
-                topDespesas.map((d) => (
-                  <ThemedView key={d.id} style={styles.pagarItem}>
-                    <ThemedText style={styles.pagarLabel}>• {d.descricao}</ThemedText>
-                    <ThemedText style={[styles.pagarValue, { color: '#DC2626' }]}>
-                      {formatCurrency(d.valor)}
-                    </ThemedText>
-                  </ThemedView>
-                ))
-              )}
-            </ThemedView>
-
-            {divider()}
-
-            {/* Últimas Movimentações */}
-            <ThemedText style={styles.sectionTitle}>Últimas Movimentações</ThemedText>
-            <ThemedView style={styles.movCard}>
-              {movimentacoes.length === 0 ? (
-                <ThemedText style={styles.emptyText}>Nenhuma movimentação</ThemedText>
-              ) : (
-                movimentacoes.slice(0, 6).map((m, i) => (
-                  <ThemedView key={i} style={styles.movItem}>
-                    <ThemedView style={styles.movLeft}>
-                      <ThemedText style={{ fontSize: 16 }}>
-                        {m.type === 'receita' ? '⬆' : m.type === 'despesa' ? '⬇' : '⬆'}
-                      </ThemedText>
-                      <ThemedText style={styles.movDesc}>{m.desc}</ThemedText>
-                    </ThemedView>
-                    <ThemedText
-                      style={[
-                        styles.movAmount,
-                        { color: m.amount >= 0 ? '#16A34A' : '#DC2626' },
-                      ]}
-                    >
-                      {m.amount >= 0 ? '+' : ''}{formatCurrency(Math.abs(m.amount))}
-                    </ThemedText>
-                  </ThemedView>
-                ))
-              )}
-            </ThemedView>
+            )}
 
             <View style={{ height: 80 }} />
           </ScrollView>
@@ -339,10 +307,7 @@ export default function FinanceiroScreen() {
 
         {/* FAB Menu Items */}
         {[
-          { label: 'Nova Receita', icon: '➕', onPress: () => {} },
-          { label: 'Nova Despesa', icon: '➖', onPress: () => {} },
-          { label: 'Receber', icon: '💰', onPress: () => {} },
-          { label: 'Relatórios', icon: '📄', onPress: () => {} },
+          { label: 'Nova Despesa', icon: '➖', onPress: handleAddDespesa },
         ].map((item, i) => {
           const translateY = fabAnim.interpolate({
             inputRange: [0, 1],
@@ -360,7 +325,7 @@ export default function FinanceiroScreen() {
                   {
                     backgroundColor: theme.backgroundElement,
                     opacity,
-                    bottom: 88 + 52 * (3 - i),
+                    bottom: 88,
                     transform: [{ translateY }],
                   },
                 ]}
@@ -397,6 +362,111 @@ export default function FinanceiroScreen() {
             +
           </Animated.Text>
         </Pressable>
+
+        {/* Despesa Modal */}
+        <Modal visible={despesaModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setDespesaModal(false)}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={[styles.modalContainer, { backgroundColor: theme.background }]}
+          >
+            <SafeAreaView style={{ flex: 1 }}>
+              <ThemedView style={styles.modalHeader}>
+                <ThemedText style={{ fontSize: 22, fontWeight: '700' }}>Nova Despesa</ThemedText>
+                <Pressable onPress={() => setDespesaModal(false)}>
+                  <ThemedText type="default" themeColor="textSecondary">Cancelar</ThemedText>
+                </Pressable>
+              </ThemedView>
+
+              <ScrollView contentContainerStyle={styles.modalForm} keyboardShouldPersistTaps="handled">
+                <ThemedView style={styles.fieldGroup}>
+                  <ThemedText type="smallBold" style={styles.fieldLabel}>Nome</ThemedText>
+                  <TextInput
+                    style={[styles.input, { color: theme.text, backgroundColor: theme.backgroundElement }]}
+                    placeholder="Ex: Conta de luz"
+                    placeholderTextColor={theme.textSecondary}
+                    value={despesaDesc}
+                    onChangeText={setDespesaDesc}
+                  />
+                </ThemedView>
+
+                <ThemedView style={styles.fieldGroup}>
+                  <ThemedText type="smallBold" style={styles.fieldLabel}>Valor</ThemedText>
+                  <TextInput
+                    style={[styles.input, { color: theme.text, backgroundColor: theme.backgroundElement, fontSize: 22, fontWeight: '700', textAlign: 'center' }]}
+                    placeholder="R$ 0,00"
+                    placeholderTextColor={theme.textSecondary}
+                    keyboardType="number-pad"
+                    value={despesaValor}
+                    onChangeText={(v) => setDespesaValor(formatCurrencyInput(v))}
+                  />
+                </ThemedView>
+
+                <ThemedView style={styles.fieldGroup}>
+                  <ThemedText type="smallBold" style={styles.fieldLabel}>Categoria</ThemedText>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriaRow} contentContainerStyle={{ gap: Spacing.one }}>
+                    {CATEGORIAS_DESPESA.map((cat) => (
+                      <Pressable
+                        key={cat}
+                        onPress={() => setDespesaCategoria(cat)}
+                        style={[
+                          styles.categoriaChip,
+                          {
+                            backgroundColor: despesaCategoria === cat ? '#059669' : theme.backgroundElement,
+                          },
+                        ]}
+                      >
+                        <ThemedText
+                          style={[
+                            styles.categoriaChipText,
+                            { color: despesaCategoria === cat ? '#fff' : theme.text },
+                          ]}
+                        >
+                          {cat}
+                        </ThemedText>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </ThemedView>
+
+                {despesaCategoria === 'Boletos' && (
+                  <ThemedView style={styles.fieldGroup}>
+                    <ThemedText type="smallBold" style={styles.fieldLabel}>Data de Vencimento</ThemedText>
+                    <TextInput
+                      style={[styles.input, { color: theme.text, backgroundColor: theme.backgroundElement }]}
+                      placeholder="DD/MM/AAAA"
+                      placeholderTextColor={theme.textSecondary}
+                      value={despesaVencimento}
+                      onChangeText={(v) => setDespesaVencimento(formatDateInput(v))}
+                      keyboardType="numbers-and-punctuation"
+                    />
+                  </ThemedView>
+                )}
+
+                <ThemedView style={styles.fieldGroup}>
+                  <ThemedText type="smallBold" style={styles.fieldLabel}>Observação (opcional)</ThemedText>
+                  <TextInput
+                    style={[styles.input, { color: theme.text, backgroundColor: theme.backgroundElement }]}
+                    placeholder="Observações..."
+                    placeholderTextColor={theme.textSecondary}
+                    value={despesaObservacao}
+                    onChangeText={setDespesaObservacao}
+                    multiline
+                    numberOfLines={3}
+                  />
+                </ThemedView>
+
+                <Pressable
+                  onPress={handleSaveDespesa}
+                  style={[styles.saveButton, { backgroundColor: '#059669' }]}
+                >
+                  <ThemedText style={{ fontWeight: '600', fontSize: 16, color: '#fff' }}>
+                    Salvar Despesa
+                  </ThemedText>
+                </Pressable>
+              </ScrollView>
+            </SafeAreaView>
+          </KeyboardAvoidingView>
+        </Modal>
       </SafeAreaView>
     </ThemedView>
   );
@@ -412,7 +482,6 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   scrollContent: { gap: Spacing.three, paddingBottom: Spacing.six },
-  divider: { height: 1, marginVertical: Spacing.two },
 
   monthRow: {
     flexDirection: 'row',
@@ -421,11 +490,23 @@ const styles = StyleSheet.create({
     gap: Spacing.four,
     paddingVertical: Spacing.two,
   },
-  monthArrow: {
-    padding: Spacing.one,
-  },
+  monthArrow: { padding: Spacing.one },
 
-  saldoCard: {
+  cardsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+  },
+  card: {
+    width: '48%',
+    padding: Spacing.three,
+    borderRadius: Spacing.three,
+    gap: Spacing.one,
+  },
+  cardLabel: { fontSize: 12, fontWeight: '600' },
+  cardValue: { fontSize: 20, fontWeight: '700' },
+
+  lucroCard: {
     borderRadius: Spacing.four,
     paddingVertical: Spacing.five,
     paddingHorizontal: Spacing.four,
@@ -433,93 +514,44 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: '100%',
     alignSelf: 'center',
-    backgroundColor: '#059669',
   },
-  saldoLabel: {
+  lucroLabel: {
     fontSize: 14,
     fontWeight: '600',
     lineHeight: 20,
     color: 'rgba(255,255,255,0.75)',
     textAlign: 'center',
   },
-  saldoValue: {
+  lucroValue: {
     fontSize: 30,
     fontWeight: '700',
     lineHeight: 38,
     textAlign: 'center',
     color: '#fff',
   },
-  saldoChange: { fontSize: 13, fontWeight: '600', color: '#86EFAC', marginTop: Spacing.half, textAlign: 'center' },
+  lucroSub: { fontSize: 12, fontWeight: '500', color: 'rgba(255,255,255,0.6)', marginTop: Spacing.half, textAlign: 'center' },
 
-  saldoBreakdown: {
-    flexDirection: 'row',
-    gap: Spacing.five,
-    marginTop: Spacing.four,
-    paddingTop: Spacing.four,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.2)',
-    justifyContent: 'center',
+  chartCard: {
+    borderRadius: Spacing.three,
+    padding: Spacing.three,
+    gap: Spacing.two,
   },
-  saldoBreakdownItem: { alignItems: 'center', gap: Spacing.one },
-  saldoBreakdownLabel: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.6)',
-    letterSpacing: 1,
-  },
-  saldoBreakdownValue: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#fff',
-  },
-
-  sectionTitle: { fontSize: 16, fontWeight: '700' },
-
-  chartBox: { borderRadius: 12, padding: Spacing.three },
-  chartBars: {
+  chartTitle: { fontSize: 14, fontWeight: '700' },
+  barStack: { flexDirection: 'row', borderRadius: 4, overflow: 'hidden' },
+  barSegment: { borderRadius: 0 },
+  barLegend: { flexDirection: 'row', gap: Spacing.four },
+  legendItem: { fontSize: 12 },
+  dailyChart: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    justifyContent: 'space-between',
+    gap: 2,
     height: 100,
   },
-  chartCol: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', gap: Spacing.one },
-  chartBar: { width: '60%', maxWidth: 16, borderRadius: 4 },
-  chartLabel: { fontSize: 10, opacity: 0.5 },
+  dailyCol: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', gap: 2 },
+  dailyBar: { width: '100%', borderRadius: 2, minWidth: 4 },
+  dailyLabel: { fontSize: 9, opacity: 0.5 },
 
-  receberCard: { gap: Spacing.two },
-  receberItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  receberLabel: { fontSize: 15, fontWeight: '500' },
-  receberValue: { fontSize: 16, fontWeight: '600' },
-  receberTotal: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: Spacing.two,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(128,128,128,0.2)',
-  },
-
-  pagarCard: { gap: Spacing.two },
-  pagarItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  pagarLabel: { fontSize: 15, fontWeight: '500' },
-  pagarValue: { fontSize: 16, fontWeight: '600' },
-
-  movCard: { gap: Spacing.two },
-  movItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  movLeft: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, flex: 1 },
-  movDesc: { fontSize: 14, fontWeight: '500' },
-  movAmount: { fontSize: 14, fontWeight: '700' },
+  emptyText: { fontSize: 14, opacity: 0.5, textAlign: 'center', paddingVertical: Spacing.six },
 
   fab: {
     position: 'absolute',
@@ -560,5 +592,14 @@ const styles = StyleSheet.create({
   },
   fabItemLabel: { fontSize: 14, fontWeight: '600' },
 
-  emptyText: { fontSize: 13, opacity: 0.5, textAlign: 'center', paddingVertical: Spacing.three },
+  modalContainer: { flex: 1 },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.four, paddingVertical: Spacing.three },
+  modalForm: { paddingHorizontal: Spacing.four, gap: Spacing.four, paddingBottom: Spacing.six },
+  fieldGroup: { gap: Spacing.one },
+  fieldLabel: { letterSpacing: 0.5 },
+  input: { borderWidth: 1, borderColor: 'transparent', borderRadius: Spacing.two, paddingHorizontal: Spacing.three, paddingVertical: Platform.OS === 'ios' ? Spacing.three : Spacing.two, fontSize: 16 },
+  saveButton: { alignItems: 'center', justifyContent: 'center', paddingVertical: Spacing.three, borderRadius: Spacing.two, marginTop: Spacing.two },
+  categoriaRow: { flexDirection: 'row', marginTop: Spacing.one },
+  categoriaChip: { paddingHorizontal: Spacing.three, paddingVertical: Spacing.one, borderRadius: 20, marginRight: Spacing.one },
+  categoriaChipText: { fontSize: 13, fontWeight: '600' },
 });

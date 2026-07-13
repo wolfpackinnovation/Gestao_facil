@@ -1,4 +1,4 @@
-import { createWithId, getAll, get, remove, where, orderBy } from './db'
+import { createWithId, getAll, get, remove, update, where } from './db'
 import { Collections } from './collections'
 
 export const CATEGORIAS_DESPESA = [
@@ -25,6 +25,7 @@ export interface Despesa {
   data: string
   observacao: string
   createdAt: string
+  vencimento?: string
 }
 
 function generateId(): string {
@@ -41,6 +42,7 @@ function fromFirestoreDoc(doc: any): Despesa {
     data: doc.data ?? '',
     observacao: doc.observacao ?? '',
     createdAt: doc.createdAt?.toDate?.()?.toISOString() ?? doc.createdAt ?? new Date().toISOString(),
+    vencimento: doc.vencimento || undefined,
   }
 }
 
@@ -49,10 +51,10 @@ export async function getDespesas(companyId: string): Promise<Despesa[]> {
     const docs = await getAll<any>(
       Collections.expenses,
       where('companyId', '==', companyId),
-      orderBy('createdAt', 'desc')
     )
     return docs.map(fromFirestoreDoc)
-  } catch {
+  } catch (e) {
+    console.error('getDespesas error:', e)
     return []
   }
 }
@@ -79,5 +81,11 @@ export async function createDespesa(data: Omit<Despesa, 'id' | 'createdAt'>): Pr
 export async function deleteDespesa(id: string): Promise<void> {
   try {
     await remove(Collections.expenses, id)
+  } catch {}
+}
+
+export async function updateDespesa(id: string, data: Partial<Omit<Despesa, 'id' | 'createdAt'>>): Promise<void> {
+  try {
+    await update<any>(Collections.expenses, id, data)
   } catch {}
 }

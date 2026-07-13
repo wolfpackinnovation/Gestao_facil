@@ -14,6 +14,13 @@ export async function getClientPayments(companyId: string, clientId: string): Pr
   )
 }
 
+export async function getAllPayments(companyId: string): Promise<Payment[]> {
+  return getAll<Payment>(
+    Collections.payments,
+    where('companyId', '==', companyId)
+  )
+}
+
 export async function getPaymentsByDate(companyId: string, date: Date): Promise<Payment[]> {
   const all = await getAll<Payment>(
     Collections.payments,

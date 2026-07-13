@@ -21,8 +21,8 @@ import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/contexts/auth';
-import { getTodaySales, getSalesByDate, getSaleItems } from '@/services/sale-service';
-import { getPaymentsByDate } from '@/services/payment-service';
+import { getTodaySales, getSalesByDate, getSaleItems, getAllSales } from '@/services/sale-service';
+import { getPaymentsByDate, getAllPayments } from '@/services/payment-service';
 import { getProdutos } from '@/services/estoque-storage';
 import type { Produto } from '@/services/estoque-storage';
 import type { Sale } from '@/types/schema';
@@ -52,8 +52,10 @@ export default function HomeScreen() {
 
   const [todaySales, setTodaySales] = useState<Sale[]>([]);
   const [yesterdaySales, setYesterdaySales] = useState<Sale[]>([]);
+  const [allSales, setAllSales] = useState<Sale[]>([]);
   const [todayPayments, setTodayPayments] = useState<any[]>([]);
   const [yesterdayPayments, setYesterdayPayments] = useState<any[]>([]);
+  const [weekTotals, setWeekTotals] = useState<number[]>([]);
   const [products, setProducts] = useState<Produto[]>([]);
   const [lowStockProducts, setLowStockProducts] = useState<Produto[]>([]);
   const [topProducts, setTopProducts] = useState<{ name: string; count: number }[]>([]);
@@ -72,13 +74,34 @@ export default function HomeScreen() {
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
 
-    const [todayData, yesterdayData, todayPayData, yesterdayPayData, allProducts] = await Promise.all([
+    const [todayData, yesterdayData, todayPayData, yesterdayPayData, allProducts, allSales, allPayments] = await Promise.all([
       getTodaySales(companyId),
       getSalesByDate(companyId, yesterday),
       getPaymentsByDate(companyId, today),
       getPaymentsByDate(companyId, yesterday),
       getProdutos(companyId),
+      getAllSales(companyId),
+      getAllPayments(companyId),
     ]);
+
+    const weekTotalsArr: number[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      const daySales = allSales.filter((s) => {
+        if (!s.createdAt) return false;
+        return s.createdAt.toDate().toDateString() === d.toDateString();
+      });
+      const dayPayments = allPayments.filter((p) => {
+        if (!p.createdAt) return false;
+        return p.createdAt.toDate().toDateString() === d.toDateString();
+      });
+      weekTotalsArr.push(
+        daySales.reduce((sum, s) => sum + s.totalAmount, 0) +
+        dayPayments.reduce((sum, p) => sum + p.amount, 0)
+      );
+    }
+    setWeekTotals(weekTotalsArr);
 
     const lowStock = allProducts.filter(
       (p) => p.estoqueMinimo > 0 && p.estoqueAtual <= p.estoqueMinimo
@@ -88,6 +111,7 @@ export default function HomeScreen() {
     setYesterdaySales(yesterdayData);
     setTodayPayments(todayPayData);
     setYesterdayPayments(yesterdayPayData);
+    setAllSales(allSales);
     setProducts(allProducts);
     setLowStockProducts(lowStock);
 
@@ -185,10 +209,23 @@ export default function HomeScreen() {
     return Math.round(((todayTotal - yesterdayTotal) / yesterdayTotal) * 100);
   }, [todayTotal, yesterdayTotal]);
 
+  const monthSales = useMemo(
+    () => allSales.filter((s) => {
+      const d = s.createdAt?.toDate?.() ?? new Date();
+      return d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear();
+    }),
+    [allSales, today]
+  );
+
+  const monthSalesTotal = useMemo(
+    () => monthSales.reduce((sum, s) => sum + s.totalAmount, 0),
+    [monthSales]
+  );
+
   const averageTicket = useMemo(() => {
-    if (todaySales.length === 0) return 0;
-    return todayTotal / todaySales.length;
-  }, [todayTotal, todaySales.length]);
+    if (monthSales.length === 0) return 0;
+    return monthSalesTotal / monthSales.length;
+  }, [monthSalesTotal, monthSales.length]);
 
   if (loading) return <Loading />;
 
@@ -230,7 +267,7 @@ export default function HomeScreen() {
           <View style={styles.statsGrid}>
             <View style={styles.statsRow}>
               <View style={[styles.statBox, { backgroundColor: theme.backgroundElement }]}>
-                <ThemedText style={styles.statValue}>{todaySales.length}</ThemedText>
+                <ThemedText style={styles.statValue}>{monthSales.length}</ThemedText>
                 <ThemedText style={styles.statLabel}>Vendas</ThemedText>
               </View>
               <View style={[styles.statBox, { backgroundColor: theme.backgroundElement }]}>
@@ -254,7 +291,7 @@ export default function HomeScreen() {
 
           {/* Week Sales Chart */}
           <ThemedText style={styles.sectionTitle}>📊 Vendas da Semana</ThemedText>
-          <WeekChart todayTotal={todayTotal} />
+          {weekTotals.length > 0 && <WeekChart data={weekTotals} />}
 
           {/* Alerts */}
           <ThemedText style={styles.sectionTitle}>⚠️ Atenção</ThemedText>
@@ -405,23 +442,21 @@ export default function HomeScreen() {
   );
 }
 
-function WeekChart({ todayTotal }: { todayTotal: number }) {
+function WeekChart({ data }: { data: number[] }) {
   const theme = useTheme();
   const bars = useMemo(() => {
     const today = new Date();
-    const maxVal = Math.max(todayTotal, 1);
-    const data: { label: string; value: number }[] = [];
-    for (let i = 6; i >= 0; i--) {
+    const maxVal = Math.max(...data, 1);
+    return data.map((value, i) => {
       const d = new Date(today);
-      d.setDate(d.getDate() - i);
-      const isToday = i === 0;
-      data.push({
+      d.setDate(d.getDate() - (6 - i));
+      return {
         label: weekDays[d.getDay()],
-        value: isToday ? todayTotal : 0,
-      });
-    }
-    return data.map((d) => ({ ...d, height: Math.max((d.value / maxVal) * 100, 3) }));
-  }, [todayTotal]);
+        value,
+        height: Math.max((value / maxVal) * 100, 3),
+      };
+    });
+  }, [data]);
 
   return (
     <View style={[styles.chartBox, { backgroundColor: theme.backgroundElement }]}>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { StyleSheet, Pressable, Alert, ScrollView } from 'react-native'
+import { StyleSheet, Pressable, Alert, ScrollView, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter, useLocalSearchParams } from 'expo-router'
 import { SymbolView } from 'expo-symbols'
@@ -9,6 +9,7 @@ import { ThemedView } from '@/components/themed-view'
 import { useTheme } from '@/hooks/use-theme'
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme'
 import { getProduto, deleteProduto, formatCurrency, type Produto, type UnidadeMedida } from '@/services/estoque-storage'
+import { formatQuantity } from '@/utils/format'
 
 const unidadeLabel: Record<UnidadeMedida, string> = {
   un: 'Unidade',
@@ -109,14 +110,14 @@ export default function ProdutoDetalheScreen() {
             <ThemedView style={styles.infoItem}>
               <ThemedText type="small" themeColor="textSecondary">Estoque Atual</ThemedText>
               <ThemedText type="default" style={styles.infoValue}>
-                {produto.estoqueAtual} {produto.unidade}
+                {formatQuantity(produto.estoqueAtual)} {produto.unidade}
               </ThemedText>
             </ThemedView>
 
             <ThemedView style={styles.infoItem}>
               <ThemedText type="small" themeColor="textSecondary">Estoque Mínimo</ThemedText>
               <ThemedText type="default" style={styles.infoValue}>
-                {produto.estoqueMinimo} {produto.unidade}
+                {formatQuantity(produto.estoqueMinimo)} {produto.unidade}
               </ThemedText>
             </ThemedView>
 
@@ -138,7 +139,7 @@ export default function ProdutoDetalheScreen() {
             <ThemedView style={styles.infoItem}>
               <ThemedText type="small" themeColor="textSecondary">Quantidade por Unidade</ThemedText>
               <ThemedText type="default" style={styles.infoValue}>
-                {produto.quantidade} {produto.unidade}
+                {formatQuantity(produto.quantidade)} {produto.unidade}
               </ThemedText>
             </ThemedView>
 
@@ -168,14 +169,24 @@ export default function ProdutoDetalheScreen() {
             </ThemedView>
           </ThemedView>
 
-          <Pressable
-            onPress={handleDelete}
-            style={({ pressed }) => [styles.deleteButton, pressed && { opacity: 0.7 }]}
-          >
-            <ThemedText type="default" style={{ color: '#ef4444' }}>
-              Excluir Produto
-            </ThemedText>
-          </Pressable>
+          <View style={styles.actionRow}>
+            <Pressable
+              onPress={() => router.navigate('/(tabs)/estoque?editId=' + produto.id as any)}
+              style={({ pressed }) => [styles.editButton, pressed && { opacity: 0.7 }]}
+            >
+              <ThemedText type="default" style={{ color: theme.text, fontWeight: '600' }}>
+                Editar
+              </ThemedText>
+            </Pressable>
+            <Pressable
+              onPress={handleDelete}
+              style={({ pressed }) => [styles.deleteButton, pressed && { opacity: 0.7 }]}
+            >
+              <ThemedText type="default" style={{ color: '#ef4444' }}>
+                Excluir
+              </ThemedText>
+            </Pressable>
+          </View>
         </ScrollView>
       </SafeAreaView>
     </ThemedView>
@@ -269,10 +280,23 @@ const styles = StyleSheet.create({
     color: '#f59e0b',
     fontWeight: '600',
   },
-  deleteButton: {
+  actionRow: {
+    flexDirection: 'row',
+    gap: Spacing.three,
+    marginTop: Spacing.two,
+  },
+  editButton: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: Spacing.three,
-    marginTop: Spacing.two,
+    borderRadius: Spacing.two,
+  },
+  deleteButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.three,
+    borderRadius: Spacing.two,
   },
 })
