@@ -343,9 +343,9 @@ export default function ClientesScreen() {
         <View style={styles.actionRow}>
           <Pressable
             onPress={() => router.push(`/cliente-detalhe?id=${item.id}`)}
-            style={[styles.actionButton, { backgroundColor: 'transparent', borderWidth: 1, borderColor: theme.textSecondary + '60' }]}
+            style={styles.outlineButton}
           >
-            <ThemedText style={[styles.actionButtonText, { color: theme.text }]}>Detalhes</ThemedText>
+            <ThemedText style={styles.outlineButtonText}>Detalhes</ThemedText>
           </Pressable>
           {hasDebt && (
             <Pressable
@@ -372,31 +372,31 @@ export default function ClientesScreen() {
           {/* Header */}
           <View style={styles.header}>
             <ThemedText style={styles.headerTitle}>👤 Clientes</ThemedText>
-            <Pressable onPress={openNew} style={[styles.addButton, { backgroundColor: theme.text }]}>
-              <ThemedText style={[styles.addButtonText, { color: theme.background }]}>+ Novo</ThemedText>
+            <Pressable onPress={openNew} style={styles.addButton}>
+              <ThemedText style={styles.addButtonText}>+ Novo</ThemedText>
             </Pressable>
           </View>
 
           {loading ? <Loading /> : (
             <>
               {/* Stats */}
-              <View style={[styles.statCard, { backgroundColor: theme.backgroundElement }]}>
+              <View style={styles.statCard}>
                 <ThemedText style={styles.statLabel}>Saldo a Receber</ThemedText>
                 <ThemedText style={styles.statValue}>{formatCurrency(totalReceivable)}</ThemedText>
               </View>
               <View style={styles.statsRow}>
-                <View style={[styles.statCardSmall, { backgroundColor: theme.backgroundElement }]}>
+                <View style={styles.statCardSmall}>
                   <ThemedText style={styles.statLabel}>Clientes</ThemedText>
                   <ThemedText style={styles.statValue}>{clients.length}</ThemedText>
                 </View>
-                <View style={[styles.statCardSmall, { backgroundColor: theme.backgroundElement }]}>
+                <View style={styles.statCardSmall}>
                   <ThemedText style={styles.statLabel}>Inadimplentes</ThemedText>
                   <ThemedText style={[styles.statValue, { color: '#ef4444' }]}>{inadimplentes}</ThemedText>
                 </View>
               </View>
 
               {/* Search */}
-              <View style={[styles.searchRow, { backgroundColor: theme.backgroundElement }]}>
+              <View style={styles.searchRow}>
                 <Ionicons name="search" size={18} color={theme.textSecondary} />
                 <TextInput
                   style={[styles.searchInput, { color: theme.text }]}
@@ -407,19 +407,17 @@ export default function ClientesScreen() {
                 />
               </View>
 
-              {/* Filter Tabs */}
+              {/* Filter Chips */}
               <View style={styles.filterRow}>
                 {(['todos', 'devendo', 'emdia'] as const).map((f) => (
-                  <Pressable key={f} onPress={() => setFilter(f)} style={styles.filterTab}>
-                    <ThemedText
-                      style={[
-                        styles.filterTabText,
-                        { color: filter === f ? theme.text : theme.textSecondary },
-                      ]}
-                    >
+                  <Pressable
+                    key={f}
+                    onPress={() => setFilter(f)}
+                    style={[styles.filterChip, { backgroundColor: filter === f ? '#7B4F2C' : theme.backgroundElement }]}
+                  >
+                    <ThemedText type="small" style={{ fontWeight: '600', color: filter === f ? '#fff' : theme.text }}>
                       {f === 'todos' ? 'Todos' : f === 'devendo' ? 'Devendo' : 'Em dia'}
                     </ThemedText>
-                    {filter === f && <View style={[styles.activeBar, { backgroundColor: theme.text }]} />}
                   </Pressable>
                 ))}
               </View>
@@ -436,7 +434,6 @@ export default function ClientesScreen() {
                 filteredClients.map((client, idx) => (
                   <View key={client.id}>
                     {renderClient({ item: client })}
-                    {idx < filteredClients.length - 1 && <View style={styles.divider} />}
                   </View>
                 ))
               )}
@@ -469,7 +466,7 @@ export default function ClientesScreen() {
               <Pressable onPress={() => setReceiveModal(false)} style={styles.receiveCancel}>
                 <ThemedText style={{ fontWeight: '600' }}>Cancelar</ThemedText>
               </Pressable>
-              <Pressable onPress={handleReceivePayment} style={[styles.receiveConfirm, { backgroundColor: theme.text }]}>
+              <Pressable onPress={handleReceivePayment} style={styles.receiveConfirm}>
                 <ThemedText style={{ fontWeight: '600', color: theme.background }}>Confirmar</ThemedText>
               </Pressable>
             </ThemedView>
@@ -530,9 +527,9 @@ export default function ClientesScreen() {
 
               <Pressable
                 onPress={handleSave}
-                style={[styles.saveButton, { backgroundColor: theme.text }]}
+                style={styles.saveButton}
               >
-                <ThemedText style={[styles.saveButtonText, { color: theme.background }]}>
+                <ThemedText style={styles.saveButtonText}>
                   {editingId ? 'Salvar Alterações' : 'Cadastrar Cliente'}
                 </ThemedText>
               </Pressable>
@@ -555,8 +552,8 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.three,
   },
   headerTitle: { fontSize: 24, fontWeight: '700' },
-  addButton: { paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, borderRadius: Spacing.two },
-  addButtonText: { fontWeight: '600', fontSize: 14 },
+  addButton: { paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, borderRadius: Spacing.two, backgroundColor: '#7B4F2C' },
+  addButtonText: { fontWeight: '600', fontSize: 14, color: '#fff' },
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -564,34 +561,29 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.two,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.one,
+    borderWidth: 1,
+    borderColor: 'rgba(128,128,128,0.2)',
+    marginBottom: Spacing.three,
   },
   searchInput: { flex: 1, fontSize: 15, paddingVertical: Spacing.two },
   filterRow: {
     flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(128,128,128,0.2)',
-    marginBottom: Spacing.two,
+    gap: Spacing.two,
+    marginBottom: Spacing.three,
   },
-  filterTab: {
+  filterChip: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: Spacing.two + 2,
-    position: 'relative',
-  },
-  filterTabText: { fontWeight: '600', fontSize: 14 },
-  activeBar: {
-    position: 'absolute',
-    bottom: -1,
-    left: 0,
-    right: 0,
-    height: 2,
-    borderRadius: 1,
+    paddingVertical: Spacing.two - 2,
+    borderRadius: Spacing.half,
   },
   statCard: {
     borderRadius: Spacing.three,
     padding: Spacing.three,
     alignItems: 'center',
     marginBottom: Spacing.two,
+    borderWidth: 1,
+    borderColor: 'rgba(128,128,128,0.2)',
   },
   statLabel: { fontSize: 13, opacity: 0.6, marginBottom: Spacing.half },
   statValue: { fontSize: 24, fontWeight: '700' },
@@ -605,10 +597,15 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.three,
     padding: Spacing.three,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(128,128,128,0.2)',
   },
-  divider: { height: 1, backgroundColor: 'rgba(128,128,128,0.15)', marginVertical: Spacing.two },
   clientItem: {
-    paddingVertical: Spacing.two,
+    borderRadius: Spacing.three,
+    padding: Spacing.three,
+    marginBottom: Spacing.three,
+    borderWidth: 1,
+    borderColor: 'rgba(128,128,128,0.2)',
   },
   clientRow: {
     flexDirection: 'row',
@@ -628,13 +625,23 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     flex: 1,
-    backgroundColor: '#059669',
+    backgroundColor: '#7B4F2C',
     paddingVertical: Spacing.one + 2,
     paddingHorizontal: Spacing.three,
     borderRadius: Spacing.two,
     alignItems: 'center',
   },
   actionButtonText: { color: '#ffffff', fontWeight: '600', fontSize: 13 },
+  outlineButton: {
+    flex: 1,
+    paddingVertical: Spacing.one + 2,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.two,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#7B4F2C',
+  },
+  outlineButtonText: { color: '#7B4F2C', fontWeight: '600', fontSize: 13 },
   emptyState: { alignItems: 'center', justifyContent: 'center', gap: Spacing.three, paddingVertical: Spacing.six },
   emptyEmoji: { fontSize: 48 },
   emptyTitle: { textAlign: 'center' },
@@ -651,8 +658,8 @@ const styles = StyleSheet.create({
   inputError: { borderColor: '#ef4444' },
   rowFields: { flexDirection: 'row', gap: Spacing.three },
   halfField: { flex: 1 },
-  saveButton: { alignItems: 'center', justifyContent: 'center', paddingVertical: Spacing.three, borderRadius: Spacing.two, marginTop: Spacing.two },
-  saveButtonText: { fontWeight: '600', fontSize: 16 },
+  saveButton: { alignItems: 'center', justifyContent: 'center', paddingVertical: Spacing.three, borderRadius: Spacing.two, marginTop: Spacing.two, backgroundColor: '#7B4F2C' },
+  saveButtonText: { fontWeight: '600', fontSize: 16, color: '#fff' },
   deleteButton: { alignItems: 'center', justifyContent: 'center', paddingVertical: Spacing.three, borderRadius: Spacing.two, marginTop: Spacing.six, borderWidth: 1, borderColor: '#ef4444' },
   deleteButtonText: { color: '#ef4444', fontWeight: '600', fontSize: 16 },
   receiveButton: { alignItems: 'center', justifyContent: 'center', paddingVertical: Spacing.three, borderRadius: Spacing.two, marginTop: Spacing.three, backgroundColor: '#22c55e' },
@@ -675,6 +682,6 @@ const styles = StyleSheet.create({
   receiveInput: { borderRadius: Spacing.two, paddingHorizontal: Spacing.three, paddingVertical: Spacing.three, fontSize: 24, fontWeight: '700', textAlign: 'center' },
   receiveActions: { flexDirection: 'row', gap: Spacing.three, marginTop: Spacing.two },
   receiveCancel: { flex: 1, alignItems: 'center', paddingVertical: Spacing.three, borderRadius: Spacing.two, borderWidth: 1, borderColor: 'rgba(128,128,128,0.3)' },
-  receiveConfirm: { flex: 1, alignItems: 'center', paddingVertical: Spacing.three, borderRadius: Spacing.two },
+  receiveConfirm: { flex: 1, alignItems: 'center', paddingVertical: Spacing.three, borderRadius: Spacing.two, backgroundColor: '#7B4F2C' },
   txRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: Spacing.two, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(128,128,128,0.2)' },
 });

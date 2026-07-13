@@ -80,7 +80,7 @@ export default function FinanceiroDetalheScreen() {
           desc: `Venda ${s.number}`,
           sub: 'Pago',
           amount: s.totalAmount,
-          color: '#16A34A',
+          color: '#7B4F2C',
         }));
       case 'areceber':
         return allSales
@@ -186,7 +186,7 @@ export default function FinanceiroDetalheScreen() {
                   {type === 'apagar' && (
                     <Pressable
                       onPress={() => handlePagar(item.id)}
-                      style={[styles.pagarButton, { backgroundColor: '#16A34A' }]}
+                      style={[styles.pagarButton, { backgroundColor: '#7B4F2C' }]}
                     >
                       <ThemedText style={styles.pagarText}>Pagar</ThemedText>
                     </Pressable>

@@ -243,44 +243,51 @@ export default function HomeScreen() {
 
           {/* Sales Today */}
           <View style={styles.totalCard}>
-            <ThemedText style={styles.totalCardLabel}>💰 Vendas Hoje</ThemedText>
-            <ThemedText style={styles.totalCardValue} numberOfLines={1} adjustsFontSizeToFit>
-              {formatCurrency(todayTotal)}
-            </ThemedText>
-            <View style={styles.totalBreakdown}>
-              <View style={styles.totalBreakdownItem}>
-                <ThemedText style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', letterSpacing: 1 }}>VENDAS</ThemedText>
-                <ThemedText style={{ fontSize: 22, fontWeight: '700', color: '#fff' }}>
-                  {formatCurrency(todaySales.reduce((s, v) => s + v.totalAmount, 0))}
-                </ThemedText>
-              </View>
-              <View style={styles.totalBreakdownItem}>
-                <ThemedText style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', letterSpacing: 1 }}>RECEBIMENTOS</ThemedText>
-                <ThemedText style={{ fontSize: 22, fontWeight: '700', color: '#fff' }}>
-                  {formatCurrency(todayPayments.reduce((s, p) => s + p.amount, 0))}
-                </ThemedText>
+            <View style={styles.totalCardDecor}>
+              <View style={styles.decorCircle1} />
+              <View style={styles.decorCircle2} />
+            </View>
+            <View style={styles.totalCardLeft}>
+              <ThemedText style={styles.totalCardLabel}>Movimento do Dia</ThemedText>
+              <ThemedText style={styles.totalCardValue} numberOfLines={1} adjustsFontSizeToFit>
+                {formatCurrency(todayTotal)}
+              </ThemedText>
+              <View style={styles.totalBreakdown}>
+                <View style={styles.totalBreakdownItem}>
+                  <ThemedText style={styles.totalBreakdownLabel}>VENDAS</ThemedText>
+                  <ThemedText style={styles.totalBreakdownValue}>
+                    {formatCurrency(todaySales.reduce((s, v) => s + v.totalAmount, 0))}
+                  </ThemedText>
+                </View>
+                <View style={styles.totalBreakdownItem}>
+                  <ThemedText style={styles.totalBreakdownLabel}>RECEBIDO</ThemedText>
+                  <ThemedText style={styles.totalBreakdownValue}>
+                    {formatCurrency(todayPayments.reduce((s, p) => s + p.amount, 0))}
+                  </ThemedText>
+                </View>
               </View>
             </View>
+
           </View>
 
           {/* Stats Grid */}
           <View style={styles.statsGrid}>
             <View style={styles.statsRow}>
-              <View style={[styles.statBox, { backgroundColor: theme.backgroundElement }]}>
+              <View style={styles.statBox}>
                 <ThemedText style={styles.statValue}>{monthSales.length}</ThemedText>
                 <ThemedText style={styles.statLabel}>Vendas</ThemedText>
               </View>
-              <View style={[styles.statBox, { backgroundColor: theme.backgroundElement }]}>
+              <View style={styles.statBox}>
                 <ThemedText style={styles.statValue}>{formatCurrency(averageTicket)}</ThemedText>
                 <ThemedText style={styles.statLabel}>Ticket Médio</ThemedText>
               </View>
             </View>
             <View style={styles.statsRow}>
-              <View style={[styles.statBox, { backgroundColor: theme.backgroundElement }]}>
+              <View style={styles.statBox}>
                 <ThemedText style={styles.statValue}>{products.length}</ThemedText>
                 <ThemedText style={styles.statLabel}>Produtos</ThemedText>
               </View>
-              <View style={[styles.statBox, { backgroundColor: theme.backgroundElement }]}>
+              <View style={styles.statBox}>
                 <ThemedText style={[styles.statValue, lowStockProducts.length > 0 && { color: '#ef4444' }]}>
                   {lowStockProducts.length} {lowStockProducts.length === 1 ? 'Alerta' : 'Alertas'}
                 </ThemedText>
@@ -290,12 +297,12 @@ export default function HomeScreen() {
           </View>
 
           {/* Week Sales Chart */}
-          <ThemedText style={styles.sectionTitle}>📊 Vendas da Semana</ThemedText>
+          <ThemedText style={styles.sectionTitle}>Vendas da Semana</ThemedText>
           {weekTotals.length > 0 && <WeekChart data={weekTotals} />}
 
           {/* Alerts */}
-          <ThemedText style={styles.sectionTitle}>⚠️ Atenção</ThemedText>
-          <View style={[styles.alertBox, { backgroundColor: theme.backgroundElement }]}>
+          <ThemedText style={styles.sectionTitle}>Atenção</ThemedText>
+          <View style={styles.alertBox}>
             <ThemedText style={styles.alertItem}>
               • {lowStockProducts.length} {lowStockProducts.length === 1 ? 'produto acabando' : 'produtos acabando'}
             </ThemedText>
@@ -304,8 +311,8 @@ export default function HomeScreen() {
           </View>
 
           {/* Top Products */}
-          <ThemedText style={styles.sectionTitle}>🔥 Produtos mais vendidos</ThemedText>
-          <View style={[styles.topProductsBox, { backgroundColor: theme.backgroundElement }]}>
+          <ThemedText style={styles.sectionTitle}>Produtos mais vendidos</ThemedText>
+          <View style={styles.topProductsBox}>
             {topProducts.length === 0 ? (
               <ThemedText style={styles.emptyText}>Nenhum produto vendido hoje</ThemedText>
             ) : (
@@ -367,7 +374,7 @@ export default function HomeScreen() {
       {/* FAB Button */}
       <Pressable
         onPress={toggleFab}
-        style={[styles.fab, { backgroundColor: '#059669' }]}
+        style={[styles.fab, { backgroundColor: '#7B4F2C' }]}
       >
         <Animated.Text
           style={[
@@ -428,7 +435,7 @@ export default function HomeScreen() {
 
               <Pressable
                 onPress={handleSaveDivida}
-                style={[styles.saveButton, { backgroundColor: '#059669' }]}
+                style={[styles.saveButton, { backgroundColor: '#7B4F2C' }]}
               >
                 <ThemedText style={{ fontWeight: '600', fontSize: 16, color: '#fff' }}>
                   Salvar Dívida
@@ -459,7 +466,7 @@ function WeekChart({ data }: { data: number[] }) {
   }, [data]);
 
   return (
-    <View style={[styles.chartBox, { backgroundColor: theme.backgroundElement }]}>
+    <View style={styles.chartBox}>
       <View style={styles.chartBars}>
         {bars.map((bar, idx) => (
           <View key={idx} style={styles.chartCol}>
@@ -468,7 +475,7 @@ function WeekChart({ data }: { data: number[] }) {
                 styles.chartBar,
                 {
                   height: bar.height,
-                  backgroundColor: idx === 6 ? '#059669' : theme.textSecondary,
+                  backgroundColor: idx === 6 ? '#7B4F2C' : theme.textSecondary,
                 },
               ]}
             />
@@ -498,39 +505,74 @@ const styles = StyleSheet.create({
   divider: { height: 1, backgroundColor: 'rgba(128,128,128,0.2)', marginVertical: Spacing.three },
 
   totalCard: {
+    flexDirection: 'row',
     borderRadius: Spacing.four,
-    paddingVertical: Spacing.five,
+    paddingVertical: 36,
     paddingHorizontal: Spacing.four,
     alignItems: 'center',
-    justifyContent: 'center',
     width: '100%',
     alignSelf: 'center',
-    backgroundColor: '#059669',
+    backgroundColor: '#7B4F2C',
+    gap: Spacing.three,
+    overflow: 'hidden',
   },
+  totalCardDecor: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    width: 120,
+    height: 120,
+  },
+  decorCircle1: {
+    position: 'absolute',
+    right: -20,
+    top: -20,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  decorCircle2: {
+    position: 'absolute',
+    right: 30,
+    top: 30,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  totalCardLeft: { flex: 1 },
   totalCardLabel: {
     fontSize: 14,
     fontWeight: '600',
     lineHeight: 20,
     color: 'rgba(255,255,255,0.75)',
-    textAlign: 'center',
   },
   totalCardValue: {
     fontSize: 30,
     fontWeight: '700',
     lineHeight: 38,
-    textAlign: 'center',
     color: '#fff',
   },
   totalBreakdown: {
     flexDirection: 'row',
     gap: Spacing.five,
-    marginTop: Spacing.four,
-    paddingTop: Spacing.four,
+    marginTop: Spacing.two,
+    paddingTop: Spacing.two,
     borderTopWidth: 1,
     borderTopColor: 'rgba(255,255,255,0.2)',
-    justifyContent: 'center',
   },
-  totalBreakdownItem: { alignItems: 'center', gap: Spacing.one },
+  totalBreakdownItem: { alignItems: 'flex-start', gap: Spacing.half },
+  totalBreakdownLabel: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.6)',
+    letterSpacing: 1,
+  },
+  totalBreakdownValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
+  },
 
   statsGrid: { gap: Spacing.three },
   statsRow: { flexDirection: 'row', gap: Spacing.three },
@@ -540,22 +582,30 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.three,
     paddingHorizontal: Spacing.three,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(128,128,128,0.2)',
   },
   statValue: { fontSize: 20, fontWeight: '700', lineHeight: 26 },
   statLabel: { fontSize: 13, lineHeight: 18, opacity: 0.6, marginTop: Spacing.half },
 
-  sectionTitle: { fontSize: 16, fontWeight: '700', lineHeight: 22, marginBottom: Spacing.two },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 20,
+    letterSpacing: 1,
+    marginBottom: Spacing.three,
+  },
 
-  chartBox: { borderRadius: Spacing.three, padding: Spacing.three },
+  chartBox: { borderRadius: Spacing.three, padding: Spacing.three, borderWidth: 1, borderColor: 'rgba(128,128,128,0.2)' },
   chartBars: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', height: 110 },
   chartCol: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', gap: Spacing.one },
   chartBar: { width: 24, borderRadius: Spacing.one },
   chartLabel: { fontSize: 11, lineHeight: 14, opacity: 0.5 },
 
-  alertBox: { borderRadius: Spacing.three, padding: Spacing.three, gap: Spacing.one },
+  alertBox: { borderRadius: Spacing.three, padding: Spacing.three, gap: Spacing.one, borderWidth: 1, borderColor: 'rgba(128,128,128,0.2)' },
   alertItem: { fontSize: 14, lineHeight: 22 },
 
-  topProductsBox: { borderRadius: Spacing.three, padding: Spacing.three, gap: Spacing.one },
+  topProductsBox: { borderRadius: Spacing.three, padding: Spacing.three, gap: Spacing.one, borderWidth: 1, borderColor: 'rgba(128,128,128,0.2)' },
   topProductItem: { fontSize: 15, lineHeight: 24, fontWeight: '500' },
   emptyText: { fontSize: 13, lineHeight: 18, opacity: 0.5 },
 

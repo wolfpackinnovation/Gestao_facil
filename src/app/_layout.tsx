@@ -23,7 +23,6 @@ const routeTitles: Record<string, string> = {
   'configuracao': 'Configuração',
   'cortes': 'Cortes',
   'relatorios': 'Relatórios',
-  'controle-perdas': 'Controle de Perdas',
   'nova-venda': 'Nova Venda',
   'mais': 'Mais',
   'explore': 'Explorar',

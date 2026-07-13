@@ -365,9 +365,9 @@ export default function EstoqueScreen() {
             <>
               <Pressable
                 onPress={() => openMovement('entrada', item)}
-                style={[styles.actionButton, { backgroundColor: '#16A34A18' }]}
+                style={[styles.actionButton, { backgroundColor: '#7B4F2C18' }]}
               >
-                <ThemedText style={[styles.actionButtonText, { color: '#16A34A' }]}>Entrada</ThemedText>
+                <ThemedText style={[styles.actionButtonText, { color: '#7B4F2C' }]}>Entrada</ThemedText>
               </Pressable>
               <Pressable
                 onPress={() => openMovement('saida', item)}
@@ -453,7 +453,7 @@ export default function EstoqueScreen() {
             styles.inputRow,
             {
               borderColor: errors[field] ? '#ef4444' : theme.textSecondary + '55',
-              borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
               borderRadius: Spacing.two,
             },
           ]}
@@ -496,10 +496,8 @@ export default function EstoqueScreen() {
           <ThemedText type="title" style={styles.headerTitle}>
             📦 Estoque
           </ThemedText>
-          <Pressable onPress={openNew} style={[styles.addButton, { backgroundColor: theme.text }]}>
-            <ThemedText style={[styles.addButtonText, { color: theme.background }]}>
-              + Novo
-            </ThemedText>
+          <Pressable onPress={openNew} style={styles.addButton}>
+            <ThemedText style={styles.addButtonText}>+ Novo</ThemedText>
           </Pressable>
         </ThemedView>
 
@@ -567,7 +565,7 @@ export default function EstoqueScreen() {
                         setStockFilter(card.filterKey);
                         setActiveTab('estoque');
                       }}
-                      style={[styles.summaryCard, { backgroundColor: theme.backgroundElement }, stockFilter === card.filterKey && card.filterKey !== 'todos' && { borderLeftWidth: 3, borderLeftColor: card.color }]}
+                      style={[styles.summaryCard, stockFilter === card.filterKey && card.filterKey !== 'todos' && { borderLeftWidth: 3, borderLeftColor: card.color }]}
                     >
                       <ThemedText
                         type="small"
@@ -597,27 +595,27 @@ export default function EstoqueScreen() {
                 <ThemedView style={styles.filterRow}>
                   <Pressable
                     onPress={() => { setActiveTab('todos'); setCategoryFilter(null); setStockFilter('todos'); }}
-                    style={[styles.filterChip, { backgroundColor: activeTab === 'todos' ? theme.text : theme.backgroundElement }]}
+                    style={[styles.filterChip, { backgroundColor: activeTab === 'todos' ? '#7B4F2C' : theme.backgroundElement }]}
                   >
-                    <ThemedText type="small" style={{ fontWeight: '600', color: activeTab === 'todos' ? theme.background : theme.text }}>Todos</ThemedText>
+                    <ThemedText type="small" style={{ fontWeight: '600', color: activeTab === 'todos' ? '#fff' : theme.text }}>Todos</ThemedText>
                   </Pressable>
                   <Pressable
                     onPress={() => setShowCategoryDropdown(true)}
-                    style={[styles.filterChip, { backgroundColor: categoryFilter ? theme.text : theme.backgroundElement }]}
+                    style={[styles.filterChip, { backgroundColor: categoryFilter ? '#7B4F2C' : theme.backgroundElement }]}
                   >
-                    <ThemedText type="small" style={{ color: categoryFilter ? theme.background : theme.text }}>
+                    <ThemedText type="small" style={{ color: categoryFilter ? '#fff' : theme.text }}>
                       {categoryFilter ?? 'Categorias'}
                     </ThemedText>
-                    <Ionicons name="chevron-down" size={14} color={categoryFilter ? theme.background : theme.textSecondary} />
+                    <Ionicons name="chevron-down" size={14} color={categoryFilter ? '#fff' : theme.textSecondary} />
                   </Pressable>
                   <Pressable
                     onPress={() => setShowStockDropdown(true)}
-                    style={[styles.filterChip, { backgroundColor: stockFilter !== 'todos' ? theme.text : theme.backgroundElement }]}
+                    style={[styles.filterChip, { backgroundColor: stockFilter !== 'todos' ? '#7B4F2C' : theme.backgroundElement }]}
                   >
-                    <ThemedText type="small" style={{ color: stockFilter !== 'todos' ? theme.background : theme.text }}>
+                    <ThemedText type="small" style={{ color: stockFilter !== 'todos' ? '#fff' : theme.text }}>
                       {stockFilter === 'todos' ? 'Estoque' : stockFilter === 'normal' ? 'Normal' : stockFilter === 'baixo' ? 'Estoque Baixo' : stockFilter === 'sem_estoque' ? 'Sem Estoque' : stockFilter === 'vencendo' ? 'Vencendo' : 'Vencido'}
                     </ThemedText>
-                    <Ionicons name="chevron-down" size={14} color={stockFilter !== 'todos' ? theme.background : theme.textSecondary} />
+                    <Ionicons name="chevron-down" size={14} color={stockFilter !== 'todos' ? '#fff' : theme.textSecondary} />
                   </Pressable>
                 </ThemedView>
               </ThemedView>
@@ -804,9 +802,9 @@ export default function EstoqueScreen() {
 
               <Pressable
                 onPress={handleSave}
-                style={[styles.saveButton, { backgroundColor: theme.text }]}
+                style={styles.saveButton}
               >
-                <ThemedText style={[styles.saveButtonText, { color: theme.background }]}>
+                <ThemedText style={styles.saveButtonText}>
                   {editingId ? 'Salvar Alterações' : 'Cadastrar Produto'}
                 </ThemedText>
               </Pressable>
@@ -851,7 +849,7 @@ export default function EstoqueScreen() {
               </ThemedView>
               <Pressable
                 onPress={handleSaveMovement}
-                style={[styles.saveButton, { backgroundColor: movementType === 'entrada' ? '#16A34A' : '#DC2626' }]}
+                style={[styles.saveButton, { backgroundColor: movementType === 'entrada' ? '#7B4F2C' : '#DC2626' }]}
               >
                 <ThemedText style={{ fontWeight: '600', fontSize: 16, color: '#fff' }}>
                   {movementType === 'entrada' ? 'Adicionar ao Estoque' : 'Remover do Estoque'}
@@ -890,19 +888,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
     borderRadius: Spacing.two,
+    backgroundColor: '#7B4F2C',
   },
   addButtonText: {
     fontWeight: '600',
     fontSize: 14,
+    color: '#fff',
   },
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
-    backgroundColor: 'rgba(128,128,128,0.1)',
     borderRadius: Spacing.two,
     paddingHorizontal: Spacing.three,
     marginBottom: Spacing.three,
+    borderWidth: 1,
+    borderColor: 'rgba(128,128,128,0.2)',
   },
   searchInput: {
     flex: 1,
@@ -933,8 +934,10 @@ const styles = StyleSheet.create({
   summaryCard: {
     width: '48%',
     padding: Spacing.three,
-    borderRadius: Spacing.two,
+    borderRadius: Spacing.three,
     gap: Spacing.one,
+    borderWidth: 1,
+    borderColor: 'rgba(128,128,128,0.2)',
   },
   summaryLabel: {
     fontSize: 11,
@@ -951,7 +954,7 @@ const styles = StyleSheet.create({
     padding: Spacing.four,
     marginBottom: Spacing.three,
     gap: Spacing.three,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
     borderColor: 'rgba(128,128,128,0.2)',
   },
   cardHeader: {
@@ -1088,10 +1091,12 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.three,
     borderRadius: Spacing.two,
     marginTop: Spacing.two,
+    backgroundColor: '#7B4F2C',
   },
   saveButtonText: {
     fontWeight: '600',
     fontSize: 16,
+    color: '#fff',
   },
   dropdownOverlay: {
     flex: 1,

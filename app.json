@@ -44,7 +44,11 @@
       "firebaseMessagingSenderId": "$FIREBASE_MESSAGING_SENDER_ID",
       "firebaseAppId": "$FIREBASE_APP_ID",
       "firebaseMeasurementId": "$FIREBASE_MEASUREMENT_ID",
-      "firebaseUseEmulator": "$FIREBASE_USE_EMULATOR"
+      "firebaseUseEmulator": "$FIREBASE_USE_EMULATOR",
+      "router": {},
+      "eas": {
+        "projectId": "9730c9ad-1e54-47f2-b11b-b00f700a1ade"
+      }
     },
     "experiments": {
       "typedRoutes": true,

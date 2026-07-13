@@ -140,7 +140,7 @@ export default function SignupScreen() {
           <Pressable
             style={({ pressed }) => [
               styles.button,
-              { backgroundColor: '#3c87f7' },
+              { backgroundColor: '#7B4F2C' },
               pressed && styles.buttonPressed,
               submitting && styles.buttonDisabled,
             ]}
@@ -186,7 +186,7 @@ export default function SignupScreen() {
           </ThemedText>
           <Link href="/(auth)/login" asChild>
             <Pressable>
-              <ThemedText type="default" style={{ color: '#3c87f7' }}>
+              <ThemedText type="default" style={{ color: '#7B4F2C' }}>
                 Faça login
               </ThemedText>
             </Pressable>

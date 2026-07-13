@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 
+import { DateNavigator } from '@/components/date-navigator';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Loading } from '@/utils/loading';
@@ -24,11 +25,6 @@ import { useAuth } from '@/contexts/auth';
 import { getSalesByDate, getAllSales } from '@/services/sale-service';
 import { getDespesas, createDespesa, CATEGORIAS_DESPESA, type CategoriaDespesa, type Despesa } from '@/services/despesa-service';
 import { formatCurrency, formatCurrencyInput, parseCurrencyInput, formatDateInput } from '@/utils/format';
-
-const MONTHS = [
-  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
-];
 
 function getMonthRange(ref: Date): { start: Date; end: Date } {
   const start = new Date(ref);
@@ -155,9 +151,6 @@ export default function FinanceiroScreen() {
 
   const lucroRealizado = receitasRecebidas - despesasPagas;
 
-  const currentMonth = referenceDate.getMonth();
-  const currentYear = referenceDate.getFullYear();
-
   function changeMonth(delta: number) {
     setReferenceDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + delta));
   }
@@ -201,7 +194,7 @@ export default function FinanceiroScreen() {
   }
 
   const cards = [
-    { key: 'recebidas', label: 'Receitas Recebidas', value: receitasRecebidas, color: '#16A34A' },
+    { key: 'recebidas', label: 'Receitas Recebidas', value: receitasRecebidas, color: '#7B4F2C' },
     { key: 'areceber', label: 'Receitas a Receber', value: receitasAReceber, color: '#F59E0B' },
     { key: 'despesas', label: 'Despesas Pagas', value: despesasPagas, color: '#DC2626' },
     { key: 'apagar', label: 'Despesas a Pagar', value: despesasAPagar, color: '#6B7280' },
@@ -212,21 +205,10 @@ export default function FinanceiroScreen() {
       <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
         {loading ? <Loading /> : (
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-            {/* Month Navigator */}
-            <ThemedView style={styles.monthRow}>
-              <Pressable onPress={() => changeMonth(-1)} style={styles.monthArrow}>
-                <ThemedText style={{ fontSize: 18, fontWeight: '300', color: theme.textSecondary }}>{'‹'}</ThemedText>
-              </Pressable>
-              <ThemedText style={{ fontWeight: '600', fontSize: 16 }}>
-                {MONTHS[currentMonth]} {currentYear}
-              </ThemedText>
-              <Pressable onPress={() => changeMonth(1)} style={styles.monthArrow}>
-                <ThemedText style={{ fontSize: 18, fontWeight: '300', color: theme.textSecondary }}>{'›'}</ThemedText>
-              </Pressable>
-            </ThemedView>
+            <DateNavigator selectedDate={referenceDate} onDateChange={changeMonth} mode="month" />
 
             {/* Lucro Realizado */}
-            <ThemedView style={[styles.lucroCard, { backgroundColor: lucroRealizado >= 0 ? '#16A34A' : '#DC2626' }]}>
+            <ThemedView style={[styles.lucroCard, { backgroundColor: lucroRealizado >= 0 ? '#7B4F2C' : '#DC2626' }]}>
               <ThemedText style={styles.lucroLabel}>Lucro Realizado</ThemedText>
               <ThemedText style={styles.lucroValue}>{formatCurrency(lucroRealizado)}</ThemedText>
               <ThemedText style={styles.lucroSub}>Receitas recebidas - Despesas pagas</ThemedText>
@@ -238,7 +220,7 @@ export default function FinanceiroScreen() {
                 <Pressable
                   key={card.key}
                   onPress={() => router.push('/financeiro-detalhe?type=' + card.key as any)}
-                  style={[styles.card, { backgroundColor: card.color + '12' }]}
+                  style={styles.card}
                 >
                   <ThemedText style={[styles.cardLabel, { color: card.color }]}>{card.label}</ThemedText>
                   <ThemedText style={[styles.cardValue, { color: card.color }]}>
@@ -254,7 +236,7 @@ export default function FinanceiroScreen() {
                 <ThemedText style={styles.chartTitle}>Receitas vs Despesas</ThemedText>
                 <View style={styles.barStack}>
                   <View style={{ flex: receitasRecebidas || 1 }}>
-                    <View style={[styles.barSegment, { backgroundColor: '#16A34A', height: 8, borderTopLeftRadius: 4, borderBottomLeftRadius: 4 }]} />
+                    <View style={[styles.barSegment, { backgroundColor: '#7B4F2C', height: 8, borderTopLeftRadius: 4, borderBottomLeftRadius: 4 }]} />
                   </View>
                   <View style={{ flex: despesasPagas || 1 }}>
                     <View style={[styles.barSegment, { backgroundColor: '#DC2626', height: 8 }]} />
@@ -262,7 +244,7 @@ export default function FinanceiroScreen() {
                 </View>
                 <View style={styles.barLegend}>
                   <ThemedText style={styles.legendItem}>
-                    <ThemedText style={{ color: '#16A34A', fontWeight: '600' }}>●</ThemedText> Receitas {formatCurrency(receitasRecebidas)}
+                    <ThemedText style={{ color: '#7B4F2C', fontWeight: '600' }}>●</ThemedText> Receitas {formatCurrency(receitasRecebidas)}
                   </ThemedText>
                   <ThemedText style={styles.legendItem}>
                     <ThemedText style={{ color: '#DC2626', fontWeight: '600' }}>●</ThemedText> Despesas {formatCurrency(despesasPagas)}
@@ -283,7 +265,7 @@ export default function FinanceiroScreen() {
                           styles.dailyBar,
                           {
                             height: Math.max((r.value / maxDailyRevenue) * 80, 4),
-                            backgroundColor: '#16A34A',
+                            backgroundColor: '#7B4F2C',
                           },
                         ]}
                       />
@@ -342,7 +324,7 @@ export default function FinanceiroScreen() {
         {/* FAB Button */}
         <Pressable
           onPress={() => setFabOpen((v) => !v)}
-          style={[styles.fab, { backgroundColor: '#059669' }]}
+          style={[styles.fab, { backgroundColor: '#7B4F2C' }]}
         >
           <Animated.Text
             style={[
@@ -411,7 +393,7 @@ export default function FinanceiroScreen() {
                         style={[
                           styles.categoriaChip,
                           {
-                            backgroundColor: despesaCategoria === cat ? '#059669' : theme.backgroundElement,
+                            backgroundColor: despesaCategoria === cat ? '#7B4F2C' : theme.backgroundElement,
                           },
                         ]}
                       >
@@ -457,7 +439,7 @@ export default function FinanceiroScreen() {
 
                 <Pressable
                   onPress={handleSaveDespesa}
-                  style={[styles.saveButton, { backgroundColor: '#059669' }]}
+                  style={[styles.saveButton, { backgroundColor: '#7B4F2C' }]}
                 >
                   <ThemedText style={{ fontWeight: '600', fontSize: 16, color: '#fff' }}>
                     Salvar Despesa
@@ -483,15 +465,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: { gap: Spacing.three, paddingBottom: Spacing.six },
 
-  monthRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.four,
-    paddingVertical: Spacing.two,
-  },
-  monthArrow: { padding: Spacing.one },
-
   cardsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -502,6 +475,8 @@ const styles = StyleSheet.create({
     padding: Spacing.three,
     borderRadius: Spacing.three,
     gap: Spacing.one,
+    borderWidth: 1,
+    borderColor: 'rgba(128,128,128,0.2)',
   },
   cardLabel: { fontSize: 12, fontWeight: '600' },
   cardValue: { fontSize: 20, fontWeight: '700' },
@@ -535,8 +510,15 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.three,
     padding: Spacing.three,
     gap: Spacing.two,
+    borderWidth: 1,
+    borderColor: 'rgba(128,128,128,0.2)',
   },
-  chartTitle: { fontSize: 14, fontWeight: '700' },
+  chartTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 20,
+    letterSpacing: 1,
+  },
   barStack: { flexDirection: 'row', borderRadius: 4, overflow: 'hidden' },
   barSegment: { borderRadius: 0 },
   barLegend: { flexDirection: 'row', gap: Spacing.four },

@@ -1,6 +1,6 @@
 import { View, Pressable, StyleSheet, Dimensions, Alert } from 'react-native';
 import { SymbolView } from 'expo-symbols';
-import { useRouter } from 'expo-router';
+import { useRouter, usePathname } from 'expo-router';
 
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
@@ -15,7 +15,6 @@ const sidebarItems = [
   { icon: 'house', label: 'Início', route: '/' },
   { icon: 'scissors', label: 'Cortes', route: '/cortes' },
   { icon: 'chart.bar.fill', label: 'Relatórios', route: '/relatorios' },
-  { icon: 'chart.line.downtrend.xyaxis', label: 'Controle de Perdas', route: '/controle-perdas' },
   { icon: 'gearshape', label: 'Configuração', route: '/configuracao' },
 ];
 
@@ -27,7 +26,13 @@ type SidebarProps = {
 export default function Sidebar({ open, onClose }: SidebarProps) {
   const colors = useTheme();
   const router = useRouter();
+  const pathname = usePathname();
   const { user, logout } = useAuth();
+
+  const isActive = (route: string) => {
+    if (route === '/') return pathname === '/';
+    return pathname.startsWith(route);
+  };
 
   const handleLogout = () => {
     Alert.alert('Sair', 'Tem certeza que deseja sair?', [
@@ -88,25 +93,34 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
         </Pressable>
 
         <ThemedView style={styles.navSection}>
-          {sidebarItems.map((item) => (
-            <Pressable
-              key={item.route}
-              style={({ pressed }) => [
-                styles.navItem,
-                pressed && { opacity: 0.7 },
-              ]}
-              onPress={() => {
-                onClose();
-                router.navigate(item.route as any);
-              }}>
-              <SymbolView
-                tintColor={colors.text}
-                name={{ ios: item.icon as any, web: 'link' }}
-                size={22}
-              />
-              <ThemedText type="default">{item.label}</ThemedText>
-            </Pressable>
-          ))}
+          {sidebarItems.map((item) => {
+            const active = isActive(item.route);
+            return (
+              <Pressable
+                key={item.route}
+                style={({ pressed }) => [
+                  styles.navItem,
+                  active && { backgroundColor: colors.primary },
+                  pressed && !active && { opacity: 0.7 },
+                ]}
+                onPress={() => {
+                  onClose();
+                  router.navigate(item.route as any);
+                }}>
+                <SymbolView
+                  tintColor={active ? '#ffffff' : colors.text}
+                  name={{ ios: item.icon as any, web: 'link' }}
+                  size={22}
+                  weight={active ? 'bold' : 'regular'}
+                />
+                <ThemedText
+                  type="default"
+                  style={active && { color: '#ffffff' }}>
+                  {item.label}
+                </ThemedText>
+              </Pressable>
+            );
+          })}
         </ThemedView>
 
         <ThemedView style={styles.footerSection}>

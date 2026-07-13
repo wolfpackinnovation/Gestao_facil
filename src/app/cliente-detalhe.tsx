@@ -181,10 +181,10 @@ export default function ClienteDetalheScreen() {
 
           {/* Saldo */}
           <ThemedView style={[styles.balanceCard, { backgroundColor: totalDebt > 0 ? '#FEE2E2' : '#D1FAE5' }]}>
-            <ThemedText style={[styles.balanceLabel, { color: totalDebt > 0 ? '#DC2626' : '#16A34A' }]}>
+            <ThemedText style={[styles.balanceLabel, { color: totalDebt > 0 ? '#DC2626' : '#7B4F2C' }]}>
               {totalDebt > 0 ? 'EM ABERTO' : 'EM DIA'}
             </ThemedText>
-            <ThemedText style={[styles.balanceValue, { color: totalDebt > 0 ? '#DC2626' : '#16A34A' }]}>
+            <ThemedText style={[styles.balanceValue, { color: totalDebt > 0 ? '#DC2626' : '#7B4F2C' }]}>
               {formatCurrency(totalDebt)}
             </ThemedText>
           </ThemedView>
@@ -250,7 +250,7 @@ export default function ClienteDetalheScreen() {
                     <ThemedText
                       style={[
                         styles.transactionAmount,
-                        { color: t.type === 'recebimento' ? '#16A34A' : theme.textSecondary },
+                        { color: t.type === 'recebimento' ? '#7B4F2C' : theme.textSecondary },
                       ]}
                     >
                       {t.concluded ? '' : t.type === 'recebimento' ? '+' : '-'}{formatCurrency(t.amount)}
@@ -297,7 +297,7 @@ export default function ClienteDetalheScreen() {
                 value={editValue}
                 onChangeText={(v) => setEditValue(formatCurrencyInput(v))}
               />
-              <Pressable onPress={handleSaveEdit} style={[styles.saveButton, { backgroundColor: '#059669' }]}>
+              <Pressable onPress={handleSaveEdit} style={[styles.saveButton, { backgroundColor: '#7B4F2C' }]}>
                 <ThemedText style={{ fontWeight: '600', fontSize: 16, color: '#fff' }}>Salvar</ThemedText>
               </Pressable>
             </ScrollView>

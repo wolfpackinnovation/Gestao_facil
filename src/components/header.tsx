@@ -35,7 +35,7 @@ export default function Header({ onMenuPress, title }: HeaderProps) {
 
       <Pressable onPress={() => router.navigate('/notificacao')} style={styles.notificationButton}>
         <SymbolView
-          tintColor={colors.text}
+          tintColor={colors.primary}
           name={{ ios: 'bell', web: 'search' }}
           size={22}
         />
