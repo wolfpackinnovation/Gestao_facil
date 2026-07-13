@@ -142,84 +142,90 @@ export default function VendasScreen() {
     );
   }
 
+  const listHeader = (
+    <ThemedView style={styles.headerContent}>
+      {/* Date Navigation */}
+       <ThemedView style={styles.dateNav}>
+          <Pressable onPress={() => goToDate(-1)} style={styles.dateArrow}>
+            <ThemedText style={{ fontSize: 18, fontWeight: '300', color: theme.textSecondary }}>{'‹'}</ThemedText>
+          </Pressable>
+          <ThemedView style={{ alignItems: 'center', gap: 2 }}>
+            <ThemedText style={styles.dateText}>
+              {formatDate(selectedDate)}
+            </ThemedText>
+            {isToday && (
+              <ThemedText type="small" themeColor="textSecondary">Hoje</ThemedText>
+            )}
+          </ThemedView>
+          <Pressable onPress={() => goToDate(1)} disabled={isToday} style={styles.dateArrow}>
+            <ThemedText style={{ fontSize: 18, fontWeight: '300', color: theme.textSecondary, opacity: isToday ? 0.3 : 1 }}>{'›'}</ThemedText>
+          </Pressable>
+        </ThemedView>
+
+      {/* Total do Dia */}
+      <View style={styles.totalCard}>
+        <ThemedText style={styles.totalCardLabel}>💰 Total do Dia</ThemedText>
+        <ThemedText style={styles.totalCardValue} numberOfLines={1} adjustsFontSizeToFit>
+          {formatCurrency(dayTotal)}
+        </ThemedText>
+        <View style={styles.totalBreakdown}>
+          <View style={styles.totalBreakdownRow}>
+            {methodOrder.slice(0, 2).map((method) => {
+              const total = totalsByMethod[method] ?? 0;
+              return (
+                <View key={method} style={styles.totalBreakdownItem}>
+                  <ThemedText style={styles.totalBreakdownLabel}>
+                    {paymentLabels[method]?.toUpperCase()}
+                  </ThemedText>
+                  <ThemedText style={styles.totalBreakdownValue}>
+                    {formatCurrency(total)}
+                  </ThemedText>
+                </View>
+              );
+            })}
+          </View>
+          <View style={styles.totalBreakdownRow}>
+            {methodOrder.slice(2, 4).map((method) => {
+              const total = totalsByMethod[method] ?? 0;
+              return (
+                <View key={method} style={styles.totalBreakdownItem}>
+                  <ThemedText style={styles.totalBreakdownLabel}>
+                    {paymentLabels[method]?.toUpperCase()}
+                  </ThemedText>
+                  <ThemedText style={styles.totalBreakdownValue}>
+                    {formatCurrency(total)}
+                  </ThemedText>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+      </View>
+
+      <ThemedText type="smallBold" themeColor="textSecondary">
+        Vendas
+      </ThemedText>
+    </ThemedView>
+  );
+
+  const emptyState = (
+    <ThemedView style={styles.emptyState}>
+      <ThemedText style={styles.emptyEmoji}>🛒</ThemedText>
+      <ThemedText type="subtitle" style={styles.emptyTitle}>Nenhuma venda</ThemedText>
+      <ThemedText type="default" themeColor="textSecondary">Registre sua primeira venda.</ThemedText>
+    </ThemedView>
+  );
+
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
-        <ThemedView style={styles.headerContent}>
-          {/* Date Navigation */}
-           <ThemedView style={styles.dateNav}>
-             <Pressable onPress={() => goToDate(-1)} style={styles.dateArrow}>
-               <ThemedText style={{ fontSize: 18, fontWeight: '300', color: theme.textSecondary }}>{'‹'}</ThemedText>
-             </Pressable>
-             <ThemedView style={{ alignItems: 'center', gap: 2 }}>
-               <ThemedText style={styles.dateText}>
-                 {formatDate(selectedDate)}
-               </ThemedText>
-               {isToday && (
-                 <ThemedText type="small" themeColor="textSecondary">Hoje</ThemedText>
-               )}
-             </ThemedView>
-             <Pressable onPress={() => goToDate(1)} disabled={isToday} style={styles.dateArrow}>
-               <ThemedText style={{ fontSize: 18, fontWeight: '300', color: theme.textSecondary, opacity: isToday ? 0.3 : 1 }}>{'›'}</ThemedText>
-             </Pressable>
-           </ThemedView>
-
-          {/* Total do Dia */}
-          <View style={styles.totalCard}>
-            <ThemedText style={styles.totalCardLabel}>💰 Total do Dia</ThemedText>
-            <ThemedText style={styles.totalCardValue} numberOfLines={1} adjustsFontSizeToFit>
-              {formatCurrency(dayTotal)}
-            </ThemedText>
-            <View style={styles.totalBreakdown}>
-              <View style={styles.totalBreakdownRow}>
-                {methodOrder.slice(0, 2).map((method) => {
-                  const total = totalsByMethod[method] ?? 0;
-                  return (
-                    <View key={method} style={styles.totalBreakdownItem}>
-                      <ThemedText style={styles.totalBreakdownLabel}>
-                        {paymentLabels[method]?.toUpperCase()}
-                      </ThemedText>
-                      <ThemedText style={styles.totalBreakdownValue}>
-                        {formatCurrency(total)}
-                      </ThemedText>
-                    </View>
-                  );
-                })}
-              </View>
-              <View style={styles.totalBreakdownRow}>
-                {methodOrder.slice(2, 4).map((method) => {
-                  const total = totalsByMethod[method] ?? 0;
-                  return (
-                    <View key={method} style={styles.totalBreakdownItem}>
-                      <ThemedText style={styles.totalBreakdownLabel}>
-                        {paymentLabels[method]?.toUpperCase()}
-                      </ThemedText>
-                      <ThemedText style={styles.totalBreakdownValue}>
-                        {formatCurrency(total)}
-                      </ThemedText>
-                    </View>
-                  );
-                })}
-              </View>
-            </View>
-          </View>
-
-          <ThemedText type="smallBold" themeColor="textSecondary">
-            Vendas
-          </ThemedText>
-        </ThemedView>
-
-        {loading ? <Loading /> : sales.length === 0 ? (
-          <ThemedView style={styles.emptyState}>
-            <ThemedText style={styles.emptyEmoji}>🛒</ThemedText>
-            <ThemedText type="subtitle" style={styles.emptyTitle}>Nenhuma venda</ThemedText>
-            <ThemedText type="default" themeColor="textSecondary">Registre sua primeira venda.</ThemedText>
-          </ThemedView>
-        ) : (
+        {loading ? <Loading /> : (
           <FlatList
             data={sales}
             keyExtractor={(item) => item.id!}
             renderItem={renderSale}
+            ListHeaderComponent={listHeader}
+            ListEmptyComponent={emptyState}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
             style={styles.list}
@@ -288,7 +294,7 @@ const styles = StyleSheet.create({
   emptyEmoji: { fontSize: 48 },
   emptyTitle: { textAlign: 'center' },
   list: { flex: 1 },
-  listContent: { gap: Spacing.three },
+  listContent: { gap: Spacing.three, paddingBottom: BottomTabInset + Spacing.five },
   saleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: Spacing.two, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(128,128,128,0.2)' },
   modalSafe: { flex: 1 },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.four, paddingVertical: Spacing.three },
