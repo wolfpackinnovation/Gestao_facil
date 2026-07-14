@@ -26,6 +26,7 @@ export interface Despesa {
   observacao: string
   createdAt: string
   vencimento?: string
+  pago?: boolean
 }
 
 function generateId(): string {
@@ -43,6 +44,7 @@ function fromFirestoreDoc(doc: any): Despesa {
     observacao: doc.observacao ?? '',
     createdAt: doc.createdAt?.toDate?.()?.toISOString() ?? doc.createdAt ?? new Date().toISOString(),
     vencimento: doc.vencimento || undefined,
+    pago: doc.pago ?? false,
   }
 }
 

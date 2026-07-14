@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   Alert,
+  Dimensions,
   FlatList,
   KeyboardAvoidingView,
   Modal,
@@ -11,11 +12,12 @@ import {
   TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { formatCurrencyInput, parseCurrencyInput } from '@/utils/format';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/contexts/auth';
 import * as SaleService from '@/services/sale-service';
@@ -43,6 +45,7 @@ interface CartItem {
 export default function NovaVendaScreen() {
   const theme = useTheme();
   const router = useRouter();
+  const { from } = useLocalSearchParams<{ from?: string }>();
   const { user } = useAuth();
   const companyId = user?.uid ?? '';
 
@@ -57,6 +60,7 @@ export default function NovaVendaScreen() {
   const [showQuantityModal, setShowQuantityModal] = useState(false);
   const [quantityModalProduct, setQuantityModalProduct] = useState<Produto | null>(null);
   const [quantityInput, setQuantityInput] = useState('');
+  const [descontoText, setDescontoText] = useState('');
 
   useEffect(() => {
     if (!companyId) return;
@@ -64,17 +68,11 @@ export default function NovaVendaScreen() {
     ClientService.listAllClients().then(setClients);
   }, [companyId]);
 
-  const needsQuantityInput = (unit: string) => unit !== 'un';
-
   function handleProductPress(product: Produto) {
-    if (needsQuantityInput(product.unidade)) {
-      setShowProductPicker(false);
-      setQuantityModalProduct(product);
-      setQuantityInput('');
-      setShowQuantityModal(true);
-    } else {
-      addProductToCart(product, 1);
-    }
+    setShowProductPicker(false);
+    setQuantityModalProduct(product);
+    setQuantityInput('');
+    setShowQuantityModal(true);
   }
 
   function confirmQuantityInput() {
@@ -120,7 +118,6 @@ export default function NovaVendaScreen() {
       );
     } else {
       setCart((prev) => [
-        ...prev,
         {
           productId: product.id,
           productName: product.nome,
@@ -128,6 +125,7 @@ export default function NovaVendaScreen() {
           unitPrice: product.custo,
           subtotal: qty * product.custo,
         },
+        ...prev,
       ]);
     }
     setShowProductPicker(false);
@@ -154,12 +152,14 @@ export default function NovaVendaScreen() {
   }
 
   const totalCart = cart.reduce((sum, item) => sum + item.subtotal, 0);
+  const desconto = parseCurrencyInput(descontoText);
+  const totalComDesconto = totalCart - desconto;
 
   function goBack() {
-    if (router.canGoBack()) {
-      router.back()
+    if (from) {
+      router.push(from as any)
     } else {
-      router.navigate('/(tabs)' as any)
+      router.back()
     }
   }
 
@@ -172,7 +172,8 @@ export default function NovaVendaScreen() {
     const saleData: Record<string, any> = {
       companyId,
       number: generateSaleNumber(),
-      totalAmount: totalCart,
+      totalAmount: totalComDesconto,
+      desconto,
       paymentMethod,
       status: paymentMethod === 'fiado' ? 'pendente' : 'concluída',
     };
@@ -272,7 +273,10 @@ export default function NovaVendaScreen() {
               </ThemedView>
             ))
           )}
+        </ScrollView>
 
+        {/* Fixed Bottom Area */}
+        <ThemedView style={styles.bottomArea}>
           {/* Payment Method */}
           <ThemedView style={styles.fieldGroup}>
             <ThemedText type="smallBold" style={styles.fieldLabel}>Forma de Pagamento</ThemedText>
@@ -283,12 +287,12 @@ export default function NovaVendaScreen() {
                   onPress={() => setPaymentMethod(method)}
                   style={[
                     styles.chip,
-                    { backgroundColor: paymentMethod === method ? theme.text : theme.backgroundElement },
+                    { backgroundColor: paymentMethod === method ? theme.primary : theme.backgroundElement },
                   ]}
                 >
                   <ThemedText
                     type="small"
-                    style={{ color: paymentMethod === method ? theme.background : theme.text }}
+                    style={{ color: paymentMethod === method ? '#ffffff' : theme.text }}
                   >
                     {method.charAt(0).toUpperCase() + method.slice(1)}
                   </ThemedText>
@@ -313,47 +317,60 @@ export default function NovaVendaScreen() {
             </ThemedView>
           )}
 
+          {/* Desconto */}
+          <ThemedView style={styles.descontoRow}>
+            <ThemedText style={styles.descontoLabel}>Desconto</ThemedText>
+            <TextInput
+              style={[styles.descontoInput, { color: theme.text, backgroundColor: theme.backgroundElement }]}
+              placeholder="R$ 0,00"
+              placeholderTextColor={theme.textSecondary}
+              keyboardType="decimal-pad"
+              value={formatCurrencyInput(descontoText)}
+              onChangeText={(t) => setDescontoText(formatCurrencyInput(t))}
+            />
+          </ThemedView>
+
           {/* Total */}
-          {cart.length > 0 && (
-            <ThemedView style={styles.totalRow}>
-              <ThemedText style={styles.totalLabel}>Total</ThemedText>
-              <ThemedText style={styles.totalValue}>{formatCurrency(totalCart)}</ThemedText>
-            </ThemedView>
-          )}
+          <ThemedView style={styles.totalRow}>
+            <ThemedText style={styles.totalLabel}>Total</ThemedText>
+            <ThemedText style={styles.totalValue}>{formatCurrency(cart.length > 0 ? totalComDesconto : 0)}</ThemedText>
+          </ThemedView>
 
           <Pressable
             onPress={finishSale}
-            style={[styles.saveButton, { backgroundColor: theme.text }]}
+            disabled={cart.length === 0}
+            style={[styles.saveButton, { backgroundColor: cart.length > 0 ? theme.primary : theme.textSecondary }]}
           >
-            <ThemedText style={[styles.saveButtonText, { color: theme.background }]}>
+            <ThemedText style={[styles.saveButtonText, { color: '#ffffff' }]}>
               Finalizar Venda
             </ThemedText>
           </Pressable>
-        </ScrollView>
+        </ThemedView>
       </SafeAreaView>
 
       {/* Product Picker Modal */}
-      <Modal visible={showProductPicker} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowProductPicker(false)}>
-        <SafeAreaView style={[styles.modalSafe, { backgroundColor: theme.background }]}>
-          <ThemedView style={styles.modalHeader}>
-            <ThemedText type="title" style={styles.modalTitle}>Selecionar Produto</ThemedText>
-            <Pressable onPress={() => setShowProductPicker(false)}>
-              <ThemedText type="default" themeColor="textSecondary">Fechar</ThemedText>
-            </Pressable>
-          </ThemedView>
+      <Modal visible={showProductPicker} transparent animationType="slide" onRequestClose={() => setShowProductPicker(false)}>
+        <Pressable style={styles.pickerOverlay} onPress={() => setShowProductPicker(false)}>
+          <Pressable style={[styles.pickerSheet, { backgroundColor: theme.background }]}>
+            <ThemedView style={styles.pickerHeader}>
+              <ThemedText type="subtitle">Selecionar Produto</ThemedText>
+              <Pressable onPress={() => setShowProductPicker(false)}>
+                <ThemedText type="default" themeColor="textSecondary">Fechar</ThemedText>
+              </Pressable>
+            </ThemedView>
 
-          <TextInput
-            style={[styles.searchInput, { color: theme.text, backgroundColor: theme.backgroundElement, marginHorizontal: Spacing.four }]}
-            placeholder="Buscar produto..."
-            placeholderTextColor={theme.textSecondary}
-            value={productSearch}
-            onChangeText={setProductSearch}
-          />
+            <TextInput
+              style={[styles.pickerSearchInput, { color: theme.text, backgroundColor: theme.backgroundElement }]}
+              placeholder="Buscar produto..."
+              placeholderTextColor={theme.textSecondary}
+              value={productSearch}
+              onChangeText={setProductSearch}
+            />
 
-          <FlatList
-            data={filteredProducts}
-            keyExtractor={(item) => item.id!}
-            contentContainerStyle={{ paddingHorizontal: Spacing.four, gap: Spacing.two }}
+            <FlatList
+              data={filteredProducts}
+              keyExtractor={(item) => item.id!}
+              contentContainerStyle={{ gap: Spacing.two }}
               renderItem={({ item }) => (
                 <Pressable
                   onPress={() => handleProductPress(item)}
@@ -368,19 +385,20 @@ export default function NovaVendaScreen() {
                   <ThemedText style={{ fontWeight: '700' }}>{formatCurrency(item.custo)}</ThemedText>
                 </Pressable>
               )}
-            ListEmptyComponent={
-              <ThemedText style={{ textAlign: 'center', marginTop: Spacing.four }} themeColor="textSecondary">
-                Nenhum produto encontrado
-              </ThemedText>
-            }
-          />
-        </SafeAreaView>
+              ListEmptyComponent={
+                <ThemedText style={{ textAlign: 'center', marginTop: Spacing.four }} themeColor="textSecondary">
+                  Nenhum produto encontrado
+                </ThemedText>
+              }
+            />
+          </Pressable>
+        </Pressable>
       </Modal>
 
       {/* Quantity Input Modal */}
-      <Modal visible={showQuantityModal} transparent animationType="fade" onRequestClose={() => setShowQuantityModal(false)}>
+      <Modal visible={showQuantityModal} transparent animationType="slide" onRequestClose={() => setShowQuantityModal(false)}>
         <Pressable style={styles.quantityOverlay} onPress={() => setShowQuantityModal(false)}>
-          <Pressable style={[styles.quantityModal, { backgroundColor: theme.background }]}>
+          <Pressable style={[styles.quantitySheet, { backgroundColor: theme.background }]}>
             <ThemedView style={styles.quantityHeader}>
               <ThemedText type="subtitle" style={{ flex: 1 }}>
                 {quantityModalProduct?.nome}
@@ -430,9 +448,9 @@ export default function NovaVendaScreen() {
 
             <Pressable
               onPress={confirmQuantityInput}
-              style={[styles.saveButton, { backgroundColor: theme.text }]}
+              style={[styles.saveButton, { backgroundColor: theme.primary }]}
             >
-              <ThemedText style={[styles.saveButtonText, { color: theme.background }]}>
+              <ThemedText style={[styles.saveButtonText, { color: '#ffffff' }]}>
                 Adicionar
               </ThemedText>
             </Pressable>
@@ -441,35 +459,37 @@ export default function NovaVendaScreen() {
       </Modal>
 
       {/* Client Picker Modal */}
-      <Modal visible={showClientPicker} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowClientPicker(false)}>
-        <SafeAreaView style={[styles.modalSafe, { backgroundColor: theme.background }]}>
-          <ThemedView style={styles.modalHeader}>
-            <ThemedText type="title" style={styles.modalTitle}>Selecionar Cliente</ThemedText>
-            <Pressable onPress={() => setShowClientPicker(false)}>
-              <ThemedText type="default" themeColor="textSecondary">Fechar</ThemedText>
-            </Pressable>
-          </ThemedView>
-
-          <FlatList
-            data={clients}
-            keyExtractor={(item) => item.id!}
-            contentContainerStyle={{ paddingHorizontal: Spacing.four, gap: Spacing.two }}
-            renderItem={({ item }) => (
-              <Pressable
-                onPress={() => { setSelectedClientId(item.id!); setShowClientPicker(false); }}
-                style={styles.productPickerItem}
-              >
-                <ThemedText style={{ fontWeight: '600' }}>{item.name}</ThemedText>
-                {item.email && <ThemedText type="small" themeColor="textSecondary">{item.email}</ThemedText>}
+      <Modal visible={showClientPicker} transparent animationType="slide" onRequestClose={() => setShowClientPicker(false)}>
+        <Pressable style={styles.pickerOverlay} onPress={() => setShowClientPicker(false)}>
+          <Pressable style={[styles.pickerSheet, { backgroundColor: theme.background }]}>
+            <ThemedView style={styles.pickerHeader}>
+              <ThemedText type="subtitle">Selecionar Cliente</ThemedText>
+              <Pressable onPress={() => setShowClientPicker(false)}>
+                <ThemedText type="default" themeColor="textSecondary">Fechar</ThemedText>
               </Pressable>
-            )}
-            ListEmptyComponent={
-              <ThemedText style={{ textAlign: 'center', marginTop: Spacing.four }} themeColor="textSecondary">
-                Nenhum cliente encontrado
-              </ThemedText>
-            }
-          />
-        </SafeAreaView>
+            </ThemedView>
+
+            <FlatList
+              data={clients}
+              keyExtractor={(item) => item.id!}
+              contentContainerStyle={{ gap: Spacing.two }}
+              renderItem={({ item }) => (
+                <Pressable
+                  onPress={() => { setSelectedClientId(item.id!); setShowClientPicker(false); }}
+                  style={styles.productPickerItem}
+                >
+                  <ThemedText style={{ fontWeight: '600' }}>{item.name}</ThemedText>
+                  {item.email && <ThemedText type="small" themeColor="textSecondary">{item.email}</ThemedText>}
+                </Pressable>
+              )}
+              ListEmptyComponent={
+                <ThemedText style={{ textAlign: 'center', marginTop: Spacing.four }} themeColor="textSecondary">
+                  Nenhum cliente encontrado
+                </ThemedText>
+              }
+            />
+          </Pressable>
+        </Pressable>
       </Modal>
     </ThemedView>
   );
@@ -482,7 +502,7 @@ const styles = StyleSheet.create({
   backButton: { minWidth: 60 },
   headerTitle: { fontSize: 28, lineHeight: 32, textAlign: 'center' },
   scroll: { flex: 1 },
-  scrollContent: { paddingBottom: Spacing.six, gap: Spacing.three },
+  scrollContent: { gap: Spacing.three },
   fieldGroup: { gap: Spacing.one },
   fieldLabel: { letterSpacing: 0.5 },
   pickerButton: { borderRadius: Spacing.two, paddingHorizontal: Spacing.three, paddingVertical: Spacing.three, fontSize: 16 },
@@ -496,19 +516,23 @@ const styles = StyleSheet.create({
   cartItemActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   qtyControls: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
   qtyBtn: { width: 32, height: 32, borderRadius: Spacing.one, alignItems: 'center', justifyContent: 'center' },
+  descontoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: Spacing.two },
+  descontoLabel: { fontSize: 16, fontWeight: '500' },
+  descontoInput: { borderRadius: Spacing.two, paddingHorizontal: Spacing.three, paddingVertical: Platform.OS === 'ios' ? Spacing.three : Spacing.two, fontSize: 18, textAlign: 'right', minWidth: 140 },
+  bottomArea: { gap: Spacing.two, paddingTop: Spacing.two, paddingBottom: BottomTabInset, borderTopWidth: 1, borderTopColor: 'rgba(128,128,128,0.15)' },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: Spacing.three, borderTopWidth: 2, borderTopColor: 'rgba(128,128,128,0.2)', marginTop: Spacing.two },
   totalLabel: { fontSize: 20, fontWeight: '600' },
   totalValue: { fontSize: 24, fontWeight: '700' },
   saveButton: { alignItems: 'center', justifyContent: 'center', paddingVertical: Spacing.three, borderRadius: Spacing.two, marginTop: Spacing.two },
   saveButtonText: { fontWeight: '600', fontSize: 16 },
-  searchInput: { borderRadius: Spacing.two, paddingHorizontal: Spacing.three, paddingVertical: Platform.OS === 'ios' ? Spacing.three : Spacing.two, fontSize: 16, marginBottom: Spacing.three },
   productPickerItem: { paddingVertical: Spacing.three, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(128,128,128,0.2)' },
-  modalSafe: { flex: 1 },
-  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.four, paddingVertical: Spacing.three },
-  modalTitle: { fontSize: 28, lineHeight: 32 },
   quantityHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.two },
-  quantityOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: Spacing.four },
-  quantityModal: { width: '100%', maxWidth: 360, borderRadius: Spacing.three, padding: Spacing.four },
+  quantityOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  quantitySheet: { borderTopLeftRadius: Spacing.four, borderTopRightRadius: Spacing.four, padding: Spacing.four, minHeight: Dimensions.get('screen').height * 0.55 },
+  pickerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  pickerSheet: { borderTopLeftRadius: Spacing.four, borderTopRightRadius: Spacing.four, paddingTop: Spacing.three, paddingHorizontal: Spacing.four, paddingBottom: Spacing.six, minHeight: Dimensions.get('screen').height * 0.6 },
+  pickerHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.three },
+  pickerSearchInput: { borderRadius: Spacing.two, paddingHorizontal: Spacing.three, paddingVertical: Platform.OS === 'ios' ? Spacing.three : Spacing.two, fontSize: 16, marginBottom: Spacing.three },
   quantityStockRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.three },
   quantityStepper: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.two, marginBottom: Spacing.three },
   quantityInput: { borderRadius: Spacing.two, paddingHorizontal: Spacing.three, paddingVertical: Platform.OS === 'ios' ? Spacing.three : Spacing.two, fontSize: 24, textAlign: 'center', minWidth: 100 },

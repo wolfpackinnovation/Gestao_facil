@@ -365,9 +365,9 @@ export default function EstoqueScreen() {
             <>
               <Pressable
                 onPress={() => openMovement('entrada', item)}
-                style={[styles.actionButton, { backgroundColor: '#7B4F2C18' }]}
+                style={[styles.actionButton, { backgroundColor: '#C4956A18' }]}
               >
-                <ThemedText style={[styles.actionButtonText, { color: '#7B4F2C' }]}>Entrada</ThemedText>
+                <ThemedText style={[styles.actionButtonText, { color: '#C4956A' }]}>Entrada</ThemedText>
               </Pressable>
               <Pressable
                 onPress={() => openMovement('saida', item)}
@@ -492,15 +492,6 @@ export default function EstoqueScreen() {
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
-        <ThemedView style={styles.header}>
-          <ThemedText type="title" style={styles.headerTitle}>
-            📦 Estoque
-          </ThemedText>
-          <Pressable onPress={openNew} style={styles.addButton}>
-            <ThemedText style={styles.addButtonText}>+ Novo</ThemedText>
-          </Pressable>
-        </ThemedView>
-
         <Modal visible={showCategoryDropdown} transparent animationType="fade" onRequestClose={() => setShowCategoryDropdown(false)}>
           <Pressable style={styles.dropdownOverlay} onPress={() => setShowCategoryDropdown(false)}>
             <ThemedView style={[styles.dropdownMenu, { backgroundColor: theme.background }]}>
@@ -557,6 +548,15 @@ export default function EstoqueScreen() {
             contentContainerStyle={styles.listContent}
             ListHeaderComponent={
               <ThemedView>
+                <ThemedView style={styles.header}>
+                  <ThemedText type="title" style={styles.headerTitle}>
+                    📦 Estoque
+                  </ThemedText>
+                  <Pressable onPress={openNew} style={styles.addButton}>
+                    <ThemedText style={styles.addButtonText}>+ Novo</ThemedText>
+                  </Pressable>
+                </ThemedView>
+
                 <ThemedView style={styles.summaryRow}>
                   {summaryCards.map((card) => (
                     <Pressable
@@ -595,13 +595,13 @@ export default function EstoqueScreen() {
                 <ThemedView style={styles.filterRow}>
                   <Pressable
                     onPress={() => { setActiveTab('todos'); setCategoryFilter(null); setStockFilter('todos'); }}
-                    style={[styles.filterChip, { backgroundColor: activeTab === 'todos' ? '#7B4F2C' : theme.backgroundElement }]}
+                    style={[styles.filterChip, { backgroundColor: activeTab === 'todos' ? '#C4956A' : theme.backgroundElement }]}
                   >
                     <ThemedText type="small" style={{ fontWeight: '600', color: activeTab === 'todos' ? '#fff' : theme.text }}>Todos</ThemedText>
                   </Pressable>
                   <Pressable
                     onPress={() => setShowCategoryDropdown(true)}
-                    style={[styles.filterChip, { backgroundColor: categoryFilter ? '#7B4F2C' : theme.backgroundElement }]}
+                    style={[styles.filterChip, { backgroundColor: categoryFilter ? '#C4956A' : theme.backgroundElement }]}
                   >
                     <ThemedText type="small" style={{ color: categoryFilter ? '#fff' : theme.text }}>
                       {categoryFilter ?? 'Categorias'}
@@ -610,7 +610,7 @@ export default function EstoqueScreen() {
                   </Pressable>
                   <Pressable
                     onPress={() => setShowStockDropdown(true)}
-                    style={[styles.filterChip, { backgroundColor: stockFilter !== 'todos' ? '#7B4F2C' : theme.backgroundElement }]}
+                    style={[styles.filterChip, { backgroundColor: stockFilter !== 'todos' ? '#C4956A' : theme.backgroundElement }]}
                   >
                     <ThemedText type="small" style={{ color: stockFilter !== 'todos' ? '#fff' : theme.text }}>
                       {stockFilter === 'todos' ? 'Estoque' : stockFilter === 'normal' ? 'Normal' : stockFilter === 'baixo' ? 'Estoque Baixo' : stockFilter === 'sem_estoque' ? 'Sem Estoque' : stockFilter === 'vencendo' ? 'Vencendo' : 'Vencido'}
@@ -680,14 +680,14 @@ export default function EstoqueScreen() {
                         styles.chip,
                         {
                           backgroundColor:
-                            form.categoria === cat ? theme.text : theme.backgroundElement,
+                            form.categoria === cat ? theme.primary : theme.backgroundElement,
                         },
                       ]}
                     >
                       <ThemedText
                         type="small"
                         style={{
-                          color: form.categoria === cat ? theme.background : theme.text,
+                          color: form.categoria === cat ? '#ffffff' : theme.text,
                         }}
                       >
                         {cat}
@@ -710,14 +710,14 @@ export default function EstoqueScreen() {
                         styles.chip,
                         {
                           backgroundColor:
-                            form.unidade === uni ? theme.text : theme.backgroundElement,
+                            form.unidade === uni ? theme.primary : theme.backgroundElement,
                         },
                       ]}
                     >
                       <ThemedText
                         type="small"
                         style={{
-                          color: form.unidade === uni ? theme.background : theme.text,
+                          color: form.unidade === uni ? '#ffffff' : theme.text,
                         }}
                       >
                         {uni}
@@ -773,23 +773,6 @@ export default function EstoqueScreen() {
               <ThemedText type="small" themeColor="textSecondary" style={{ marginTop: -Spacing.three, marginBottom: Spacing.two }}>
                 Preço sugerido: {formatCurrency(calcPrecoVenda())}
               </ThemedText>
-
-              <ThemedView style={styles.rowFields}>
-                <ThemedView style={styles.halfField}>
-                  {renderInput('Estoque Atual *', 'estoqueAtual', {
-                    keyboardType: 'numeric',
-                    placeholder: 'Ex: 15',
-                    numeric: true,
-                  })}
-                </ThemedView>
-                <ThemedView style={styles.halfField}>
-                  {renderInput('Estoque Mínimo', 'estoqueMinimo', {
-                    keyboardType: 'numeric',
-                    placeholder: 'Ex: 5',
-                    numeric: true,
-                  })}
-                </ThemedView>
-              </ThemedView>
 
               {renderInput('Data de Validade *', 'dataValidade', {
                 placeholder: 'DD/MM/AAAA',
@@ -849,7 +832,7 @@ export default function EstoqueScreen() {
               </ThemedView>
               <Pressable
                 onPress={handleSaveMovement}
-                style={[styles.saveButton, { backgroundColor: movementType === 'entrada' ? '#7B4F2C' : '#DC2626' }]}
+                style={[styles.saveButton, { backgroundColor: movementType === 'entrada' ? '#C4956A' : '#DC2626' }]}
               >
                 <ThemedText style={{ fontWeight: '600', fontSize: 16, color: '#fff' }}>
                   {movementType === 'entrada' ? 'Adicionar ao Estoque' : 'Remover do Estoque'}
@@ -888,7 +871,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
     borderRadius: Spacing.two,
-    backgroundColor: '#7B4F2C',
+    backgroundColor: '#C4956A',
   },
   addButtonText: {
     fontWeight: '600',
@@ -951,9 +934,9 @@ const styles = StyleSheet.create({
   },
   card: {
     borderRadius: Spacing.three,
-    padding: Spacing.four,
+    padding: Spacing.three,
     marginBottom: Spacing.three,
-    gap: Spacing.three,
+    gap: Spacing.one,
     borderWidth: 1,
     borderColor: 'rgba(128,128,128,0.2)',
   },
@@ -1091,7 +1074,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.three,
     borderRadius: Spacing.two,
     marginTop: Spacing.two,
-    backgroundColor: '#7B4F2C',
+    backgroundColor: '#C4956A',
   },
   saveButtonText: {
     fontWeight: '600',

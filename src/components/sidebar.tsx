@@ -1,4 +1,5 @@
 import { View, Pressable, StyleSheet, Dimensions, Alert } from 'react-native';
+import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
 import { useRouter, usePathname } from 'expo-router';
 
@@ -12,10 +13,12 @@ import { useAuth } from '@/contexts/auth';
 const SIDEBAR_WIDTH = Dimensions.get('window').width * 0.7;
 
 const sidebarItems = [
-  { icon: 'house', label: 'Início', route: '/' },
-  { icon: 'scissors', label: 'Cortes', route: '/cortes' },
-  { icon: 'chart.bar.fill', label: 'Relatórios', route: '/relatorios' },
-  { icon: 'gearshape', label: 'Configuração', route: '/configuracao' },
+  { icon: { ios: 'house', android: 'home' }, label: 'Início', route: '/' },
+  { icon: { ios: 'cow', android: 'cow' }, label: 'Cortes', route: '/cortes' },
+  { icon: { ios: 'chart.bar.fill', android: 'bar_chart' }, label: 'Relatórios', route: '/relatorios' },
+  { icon: { ios: 'dollarsign.circle', android: 'payments' }, label: 'Pagamentos', route: '/pagamentos' },
+  { icon: { ios: 'doc.text', android: 'description' }, label: 'Arquivos Fiscais', route: '/arquivos-fiscais' },
+  { icon: { ios: 'gearshape', android: 'settings' }, label: 'Configuração', route: '/configuracao' },
 ];
 
 type SidebarProps = {
@@ -59,13 +62,16 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
       <View
         style={[styles.drawer, { backgroundColor: colors.background }]}>
         <ThemedView style={styles.drawerHeader}>
-          <ThemedText type="subtitle" style={styles.drawerTitle}>
-            GestFacil
-          </ThemedText>
+          <View style={styles.drawerTitleRow}>
+            <Image source={require('@/assets/icon.png')} style={styles.drawerIcon} />
+            <ThemedText type="subtitle" style={styles.drawerTitle}>
+              GestFacil
+            </ThemedText>
+          </View>
           <Pressable onPress={onClose}>
             <SymbolView
               tintColor={colors.text}
-              name={{ ios: 'xmark', web: 'close' }}
+              name={{ ios: 'xmark', android: 'close', web: 'close' }}
               size={20}
             />
           </Pressable>
@@ -109,7 +115,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
                 }}>
                 <SymbolView
                   tintColor={active ? '#ffffff' : colors.text}
-                  name={{ ios: item.icon as any, web: 'link' }}
+                  name={{ ios: item.icon.ios as any, android: item.icon.android, web: 'link' }}
                   size={22}
                   weight={active ? 'bold' : 'regular'}
                 />
@@ -128,11 +134,11 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
             style={({ pressed }) => [styles.navItem, pressed && { opacity: 0.7 }]}
             onPress={handleLogout}>
             <SymbolView
-              tintColor={colors.textSecondary}
-              name={{ ios: 'arrow.right.square', web: 'logout' }}
+              tintColor="#DC2626"
+              name={{ ios: 'arrow.right.square', android: 'logout', web: 'logout' }}
               size={22}
             />
-            <ThemedText type="default" themeColor="textSecondary">
+            <ThemedText type="default" style={{ color: '#DC2626' }}>
               Sair
             </ThemedText>
           </Pressable>
@@ -163,8 +169,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     paddingBottom: Spacing.three,
   },
+  drawerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  drawerIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+  },
   drawerTitle: {
-    fontSize: 24,
+    fontSize: 22,
   },
   profileSection: {
     alignItems: 'center',

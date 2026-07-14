@@ -413,7 +413,7 @@ export default function ClientesScreen() {
                   <Pressable
                     key={f}
                     onPress={() => setFilter(f)}
-                    style={[styles.filterChip, { backgroundColor: filter === f ? '#7B4F2C' : theme.backgroundElement }]}
+                    style={[styles.filterChip, { backgroundColor: filter === f ? '#C4956A' : theme.backgroundElement }]}
                   >
                     <ThemedText type="small" style={{ fontWeight: '600', color: filter === f ? '#fff' : theme.text }}>
                       {f === 'todos' ? 'Todos' : f === 'devendo' ? 'Devendo' : 'Em dia'}
@@ -552,7 +552,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.three,
   },
   headerTitle: { fontSize: 24, fontWeight: '700' },
-  addButton: { paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, borderRadius: Spacing.two, backgroundColor: '#7B4F2C' },
+  addButton: { paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, borderRadius: Spacing.two, backgroundColor: '#C4956A' },
   addButtonText: { fontWeight: '600', fontSize: 14, color: '#fff' },
   searchRow: {
     flexDirection: 'row',
@@ -625,7 +625,7 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     flex: 1,
-    backgroundColor: '#7B4F2C',
+    backgroundColor: '#C4956A',
     paddingVertical: Spacing.one + 2,
     paddingHorizontal: Spacing.three,
     borderRadius: Spacing.two,
@@ -639,9 +639,9 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.two,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#7B4F2C',
+    borderColor: '#C4956A',
   },
-  outlineButtonText: { color: '#7B4F2C', fontWeight: '600', fontSize: 13 },
+  outlineButtonText: { color: '#C4956A', fontWeight: '600', fontSize: 13 },
   emptyState: { alignItems: 'center', justifyContent: 'center', gap: Spacing.three, paddingVertical: Spacing.six },
   emptyEmoji: { fontSize: 48 },
   emptyTitle: { textAlign: 'center' },
@@ -658,7 +658,7 @@ const styles = StyleSheet.create({
   inputError: { borderColor: '#ef4444' },
   rowFields: { flexDirection: 'row', gap: Spacing.three },
   halfField: { flex: 1 },
-  saveButton: { alignItems: 'center', justifyContent: 'center', paddingVertical: Spacing.three, borderRadius: Spacing.two, marginTop: Spacing.two, backgroundColor: '#7B4F2C' },
+  saveButton: { alignItems: 'center', justifyContent: 'center', paddingVertical: Spacing.three, borderRadius: Spacing.two, marginTop: Spacing.two, backgroundColor: '#C4956A' },
   saveButtonText: { fontWeight: '600', fontSize: 16, color: '#fff' },
   deleteButton: { alignItems: 'center', justifyContent: 'center', paddingVertical: Spacing.three, borderRadius: Spacing.two, marginTop: Spacing.six, borderWidth: 1, borderColor: '#ef4444' },
   deleteButtonText: { color: '#ef4444', fontWeight: '600', fontSize: 16 },
@@ -682,6 +682,6 @@ const styles = StyleSheet.create({
   receiveInput: { borderRadius: Spacing.two, paddingHorizontal: Spacing.three, paddingVertical: Spacing.three, fontSize: 24, fontWeight: '700', textAlign: 'center' },
   receiveActions: { flexDirection: 'row', gap: Spacing.three, marginTop: Spacing.two },
   receiveCancel: { flex: 1, alignItems: 'center', paddingVertical: Spacing.three, borderRadius: Spacing.two, borderWidth: 1, borderColor: 'rgba(128,128,128,0.3)' },
-  receiveConfirm: { flex: 1, alignItems: 'center', paddingVertical: Spacing.three, borderRadius: Spacing.two, backgroundColor: '#7B4F2C' },
+  receiveConfirm: { flex: 1, alignItems: 'center', paddingVertical: Spacing.three, borderRadius: Spacing.two, backgroundColor: '#C4956A' },
   txRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: Spacing.two, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(128,128,128,0.2)' },
 });

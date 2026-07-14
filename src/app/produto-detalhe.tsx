@@ -67,7 +67,7 @@ export default function ProdutoDetalheScreen() {
           <Pressable onPress={() => router.navigate('/(tabs)/estoque' as any)} style={styles.backButton}>
             <SymbolView
               tintColor={theme.text}
-              name={{ ios: 'chevron.left', web: 'arrow_back' }}
+              name={{ ios: 'chevron.left', android: 'arrow_back', web: 'arrow_back' }}
               size={24}
             />
             <ThemedText type="smallBold">Voltar</ThemedText>

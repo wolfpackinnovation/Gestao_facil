@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "802298074107",
+    "project_id": "gestaofacil-2f34c",
+    "storage_bucket": "gestaofacil-2f34c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:802298074107:android:7123f78172ca3db50d315e",
+        "android_client_info": {
+          "package_name": "com.wolfpackinnovation.GestFacil"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "802298074107-diivua8gulq0t2qurg1lo19pjlee5181.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCkRYtNoxbVBeDPsCEkYPyWaDRf_LW5r_0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "802298074107-diivua8gulq0t2qurg1lo19pjlee5181.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "802298074107-0csff4bh0fhg0u83heuca925teqrq1na.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "om.wolfpack-innovation.GestaoFacil"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

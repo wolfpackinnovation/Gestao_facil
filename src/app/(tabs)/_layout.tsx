@@ -1,4 +1,5 @@
-import { Tabs, Redirect } from 'expo-router';
+import { Tabs, useRouter } from 'expo-router';
+import { useEffect } from 'react';
 import { ActivityIndicator, View, StyleSheet, type ColorValue } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
@@ -28,6 +29,13 @@ const tabs: { name: string; label: string; icon: IoniconsName }[] = [
 export default function TabLayout() {
   const { user, loading } = useAuth();
   const theme = useTheme();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!user && !loading) {
+      router.replace('/(auth)/login');
+    }
+  }, [user, loading, router]);
 
   if (loading) {
     return (
@@ -38,7 +46,7 @@ export default function TabLayout() {
   }
 
   if (!user) {
-    return <Redirect href="/(auth)/login" />;
+    return null;
   }
 
   return (

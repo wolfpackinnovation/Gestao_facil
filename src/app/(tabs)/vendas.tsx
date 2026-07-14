@@ -1,5 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import {
+  Animated,
   FlatList,
   Modal,
   Pressable,
@@ -8,7 +9,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 
 import { DateNavigator } from '@/components/date-navigator';
 import { ThemedText } from '@/components/themed-text';
@@ -41,6 +42,7 @@ const paymentIcons: Record<string, keyof typeof Ionicons.glyphMap> = {
 export default function VendasScreen() {
   const theme = useTheme();
   const { user } = useAuth();
+  const router = useRouter();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [sales, setSales] = useState<Sale[]>([]);
   const [detailVisible, setDetailVisible] = useState(false);
@@ -155,35 +157,37 @@ export default function VendasScreen() {
       </View>
 
       {/* Formas de pagamento */}
-      <ThemedView>
+      <ThemedView style={styles.sectionGroup}>
         <ThemedText style={styles.sectionTitle}>Formas de pagamento</ThemedText>
-        <View style={{ flexDirection: 'row', gap: Spacing.three }}>
-          {methodOrder.slice(0, 2).map((method) => {
-            const total = totalsByMethod[method] ?? 0;
-            return (
-              <ThemedView key={method} style={styles.paymentCard}>
-                <View style={styles.iconCircle}>
-                  <Ionicons name={paymentIcons[method]} size={20} color={theme.primary} />
-                </View>
-                <ThemedText style={styles.paymentLabel} themeColor="textSecondary">{paymentLabels[method]}</ThemedText>
-                <ThemedText style={styles.paymentValue}>{formatCurrency(total)}</ThemedText>
-              </ThemedView>
-            );
-          })}
-        </View>
-        <View style={{ flexDirection: 'row', gap: Spacing.three, marginTop: Spacing.three }}>
-          {methodOrder.slice(2, 4).map((method) => {
-            const total = totalsByMethod[method] ?? 0;
-            return (
-              <ThemedView key={method} style={styles.paymentCard}>
-                <View style={styles.iconCircle}>
-                  <Ionicons name={paymentIcons[method]} size={20} color={theme.primary} />
-                </View>
-                <ThemedText style={styles.paymentLabel} themeColor="textSecondary">{paymentLabels[method]}</ThemedText>
-                <ThemedText style={styles.paymentValue}>{formatCurrency(total)}</ThemedText>
-              </ThemedView>
-            );
-          })}
+        <View style={styles.paymentGrid}>
+          <View style={{ flexDirection: 'row', gap: Spacing.two }}>
+            {methodOrder.slice(0, 2).map((method) => {
+              const total = totalsByMethod[method] ?? 0;
+              return (
+                <ThemedView key={method} style={styles.paymentCard}>
+                  <View style={styles.iconCircle}>
+                    <Ionicons name={paymentIcons[method]} size={20} color={theme.primary} />
+                  </View>
+                  <ThemedText style={styles.paymentLabel} themeColor="textSecondary">{paymentLabels[method]}</ThemedText>
+                  <ThemedText style={styles.paymentValue}>{formatCurrency(total)}</ThemedText>
+                </ThemedView>
+              );
+            })}
+          </View>
+          <View style={{ flexDirection: 'row', gap: Spacing.two }}>
+            {methodOrder.slice(2, 4).map((method) => {
+              const total = totalsByMethod[method] ?? 0;
+              return (
+                <ThemedView key={method} style={styles.paymentCard}>
+                  <View style={styles.iconCircle}>
+                    <Ionicons name={paymentIcons[method]} size={20} color={theme.primary} />
+                  </View>
+                  <ThemedText style={styles.paymentLabel} themeColor="textSecondary">{paymentLabels[method]}</ThemedText>
+                  <ThemedText style={styles.paymentValue}>{formatCurrency(total)}</ThemedText>
+                </ThemedView>
+              );
+            })}
+          </View>
         </View>
       </ThemedView>
 
@@ -216,6 +220,14 @@ export default function VendasScreen() {
           />
         )}
       </SafeAreaView>
+
+      {/* FAB - Nova Venda */}
+      <Pressable
+        onPress={() => router.push('/nova-venda?from=/(tabs)/vendas')}
+        style={[styles.fab, { backgroundColor: theme.primary }]}
+      >
+        <Ionicons name="add" size={28} color="#ffffff" />
+      </Pressable>
 
       {/* Sale Detail Modal */}
       <Modal visible={detailVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setDetailVisible(false)}>
@@ -272,14 +284,19 @@ const styles = StyleSheet.create({
   headerContent: { gap: Spacing.three },
 
 
+  sectionGroup: {
+    gap: Spacing.two,
+  },
   sectionTitle: {
     fontSize: 14,
     fontWeight: '700',
     lineHeight: 20,
     letterSpacing: 1,
-    marginBottom: Spacing.three,
   },
 
+  paymentGrid: {
+    gap: Spacing.two,
+  },
   paymentCard: {
     flex: 1,
     borderRadius: Spacing.three,
@@ -307,11 +324,11 @@ const styles = StyleSheet.create({
   saleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: Spacing.three,
+    padding: Spacing.two,
     borderRadius: Spacing.three,
     borderWidth: 1,
     borderColor: 'rgba(128,128,128,0.2)',
-    gap: Spacing.three,
+    gap: Spacing.two,
   },
   modalSafe: { flex: 1 },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.four, paddingVertical: Spacing.three },
@@ -324,7 +341,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: '100%',
     alignSelf: 'center',
-    backgroundColor: '#7B4F2C',
+    backgroundColor: '#C4956A',
     gap: Spacing.three,
     overflow: 'hidden',
   },
@@ -375,4 +392,19 @@ const styles = StyleSheet.create({
   },
   detailRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   detailItem: { paddingVertical: Spacing.two, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(128,128,128,0.2)' },
+  fab: {
+    position: 'absolute',
+    bottom: 24,
+    right: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
 });

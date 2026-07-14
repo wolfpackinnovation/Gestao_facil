@@ -12,6 +12,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/contexts/auth';
 import { getSalesByDate, getAllSales } from '@/services/sale-service';
 import { getDespesas, updateDespesa } from '@/services/despesa-service';
+import { listClients } from '@/services/client-service';
 import { formatCurrency } from '@/utils/format';
 
 const MONTHS = [
@@ -34,6 +35,7 @@ export default function FinanceiroDetalheScreen() {
   const [monthSales, setMonthSales] = useState<any[]>([]);
   const [allSales, setAllSales] = useState<any[]>([]);
   const [despesas, setDespesas] = useState<any[]>([]);
+  const [clients, setClients] = useState<any[]>([]);
 
   const currentMonth = referenceDate.getMonth();
   const currentYear = referenceDate.getFullYear();
@@ -41,14 +43,16 @@ export default function FinanceiroDetalheScreen() {
   const loadData = useCallback(async () => {
     if (!companyId) return;
     setLoading(true);
-    const [salesData, allSalesData, despesasData] = await Promise.all([
+    const [salesData, allSalesData, despesasData, clientsData] = await Promise.all([
       getSalesInPeriod(companyId, referenceDate).catch(() => []),
       getAllSales(companyId).catch(() => []),
       getDespesas(companyId),
+      listClients(companyId),
     ]);
     setMonthSales(salesData);
     setAllSales(allSalesData);
     setDespesas(despesasData);
+    setClients(clientsData ?? []);
     setLoading(false);
   }, [companyId, referenceDate]);
 
@@ -80,18 +84,22 @@ export default function FinanceiroDetalheScreen() {
           desc: `Venda ${s.number}`,
           sub: 'Pago',
           amount: s.totalAmount,
-          color: '#7B4F2C',
+          color: '#C4956A',
         }));
-      case 'areceber':
-        return allSales
-          .filter((s) => s.status !== 'concluída' && s.paymentMethod === 'fiado')
-          .map((s) => ({
-            id: s.id,
-            desc: `Venda ${s.number}`,
-            sub: `R$ ${(s.totalAmount - (s.paidAmount ?? 0)).toFixed(2)} restantes`,
-            amount: s.totalAmount - (s.paidAmount ?? 0),
-            color: '#F59E0B',
-          }));
+      case 'areceber': {
+        const grouped: Record<string, { id: string; desc: string; sub: string; amount: number; count: number; color: string }> = {};
+        for (const s of allSales) {
+          if (s.status === 'concluída' || s.paymentMethod !== 'fiado') continue;
+          const client = clients.find((c: any) => c.id === s.clientId);
+          const clientName = client?.name ?? 'Sem cliente';
+          if (!grouped[clientName]) {
+            grouped[clientName] = { id: s.id, desc: clientName, sub: '', amount: 0, count: 0, color: '#F59E0B' };
+          }
+          grouped[clientName].amount += s.totalAmount - (s.paidAmount ?? 0);
+          grouped[clientName].count++;
+        }
+        return Object.values(grouped).map((g) => ({ ...g, sub: `${g.count} ${g.count === 1 ? 'venda' : 'vendas'} pendente${g.count === 1 ? '' : 's'}` })).sort((a, b) => b.amount - a.amount);
+      }
       case 'despesas': {
         const despesasPeriodo = filterDespesasByPeriod(despesas, referenceDate);
         return despesasPeriodo.filter((d) => !d.vencimento).sort((a, b) => b.valor - a.valor).map((d) => ({
@@ -135,7 +143,7 @@ export default function FinanceiroDetalheScreen() {
             <Pressable onPress={() => router.navigate('/(tabs)/financeiro' as any)} style={styles.backButton}>
             <SymbolView
               tintColor={theme.text}
-              name={{ ios: 'chevron.left', web: 'arrow_back' }}
+              name={{ ios: 'chevron.left', android: 'arrow_back', web: 'arrow_back' }}
               size={24}
             />
             <ThemedText type="smallBold">Voltar</ThemedText>
@@ -160,11 +168,15 @@ export default function FinanceiroDetalheScreen() {
         {loading ? <Loading /> : (
           <ScrollView contentContainerStyle={styles.listContent}>
             {items.length > 0 && (
-              <ThemedView style={[styles.totalCard, { backgroundColor: items[0].color + '15' }]}>
-                <ThemedText style={[styles.totalLabel, { color: items[0].color }]}>
+              <ThemedView style={[styles.totalCard, { backgroundColor: items[0].color }]}>
+                <View style={styles.totalDecor}>
+                  <View style={styles.totalDecorCircle1} />
+                  <View style={styles.totalDecorCircle2} />
+                </View>
+                <ThemedText style={styles.totalLabel}>
                   {type === 'recebidas' ? 'Total Recebido' : type === 'areceber' ? 'Total a Receber' : type === 'apagar' ? 'Total a Pagar' : 'Total de Despesas'}
                 </ThemedText>
-                <ThemedText style={[styles.totalValue, { color: items[0].color }]}>
+                <ThemedText style={styles.totalValue}>
                   {formatCurrency(items.reduce((sum, i) => sum + i.amount, 0))}
                 </ThemedText>
               </ThemedView>
@@ -173,9 +185,9 @@ export default function FinanceiroDetalheScreen() {
               <ThemedText style={styles.emptyText}>Nenhum registro encontrado neste mês</ThemedText>
             ) : (
               items.map((item: any) => (
-                <ThemedView key={item.id} style={styles.item}>
-                  <ThemedView style={styles.itemRow}>
-                    <ThemedView style={styles.itemLeft}>
+                <ThemedView key={item.id} style={styles.itemCard}>
+                  <ThemedView style={styles.itemCardTop}>
+                    <ThemedView style={styles.itemCardContent}>
                       <ThemedText style={styles.itemDesc}>{item.desc}</ThemedText>
                       <ThemedText style={styles.itemSub}>{item.sub}</ThemedText>
                     </ThemedView>
@@ -186,7 +198,7 @@ export default function FinanceiroDetalheScreen() {
                   {type === 'apagar' && (
                     <Pressable
                       onPress={() => handlePagar(item.id)}
-                      style={[styles.pagarButton, { backgroundColor: '#7B4F2C' }]}
+                      style={[styles.pagarButton, { backgroundColor: '#C4956A' }]}
                     >
                       <ThemedText style={styles.pagarText}>Pagar</ThemedText>
                     </Pressable>
@@ -273,28 +285,60 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.two,
     paddingBottom: Spacing.six,
   },
-  item: {
+  itemCard: {
+    borderRadius: Spacing.three,
+    borderWidth: 1,
+    borderColor: 'rgba(128,128,128,0.2)',
+    overflow: 'hidden',
+  },
+  itemCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.three,
     gap: Spacing.two,
   },
-  itemRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  itemLeft: { gap: 2, flex: 1 },
-  itemDesc: { fontSize: 15, fontWeight: '500' },
+  itemCardContent: { gap: 2, flex: 1 },
+  itemDesc: { fontSize: 15, fontWeight: '600' },
   itemSub: { fontSize: 12, opacity: 0.6 },
-  itemAmount: { fontSize: 15, fontWeight: '700' },
+  itemAmount: { fontSize: 16, fontWeight: '700' },
   itemRight: { alignItems: 'flex-end', gap: Spacing.one },
   pagarButton: { paddingVertical: Spacing.two, borderRadius: Spacing.two, alignItems: 'center' },
   pagarText: { fontSize: 14, fontWeight: '700', color: '#fff' },
-  emptyText: { fontSize: 14, opacity: 0.5, textAlign: 'center', paddingVertical: Spacing.six },
+  emptyText: { fontSize: 14, opacity: 0.5, textAlign: 'center', paddingVertical: Spacing.five },
   totalCard: {
-    padding: Spacing.three,
-    borderRadius: Spacing.three,
+    paddingVertical: Spacing.five,
+    paddingHorizontal: Spacing.four,
+    borderRadius: Spacing.four,
     alignItems: 'center',
-    gap: Spacing.one,
+    justifyContent: 'center',
+    width: '100%',
+    overflow: 'hidden',
   },
-  totalLabel: { fontSize: 12, fontWeight: '600' },
-  totalValue: { fontSize: 22, fontWeight: '700' },
+  totalDecor: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    width: 120,
+    height: 120,
+  },
+  totalDecorCircle1: {
+    position: 'absolute',
+    right: -20,
+    top: -20,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  totalDecorCircle2: {
+    position: 'absolute',
+    right: 30,
+    top: 30,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  totalLabel: { fontSize: 14, fontWeight: '600', lineHeight: 20, color: 'rgba(255,255,255,0.75)', textAlign: 'center' },
+  totalValue: { fontSize: 30, fontWeight: '700', lineHeight: 38, color: '#fff', textAlign: 'center' },
 });

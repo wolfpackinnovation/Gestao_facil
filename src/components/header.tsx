@@ -1,7 +1,7 @@
-import { Pressable, StyleSheet } from 'react-native';
-import { SymbolView } from 'expo-symbols';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { SymbolView } from 'expo-symbols';
+import { Pressable, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
@@ -24,7 +24,7 @@ export default function Header({ onMenuPress, title }: HeaderProps) {
       <Pressable onPress={onMenuPress} style={styles.menuButton}>
         <SymbolView
           tintColor={colors.text}
-          name={{ ios: 'line.3.horizontal', web: 'menu' }}
+          name={{ ios: 'line.3.horizontal', android: 'menu', web: 'menu' }}
           size={24}
         />
       </Pressable>
@@ -34,11 +34,13 @@ export default function Header({ onMenuPress, title }: HeaderProps) {
       </ThemedText>
 
       <Pressable onPress={() => router.navigate('/notificacao')} style={styles.notificationButton}>
-        <SymbolView
-          tintColor={colors.primary}
-          name={{ ios: 'bell', web: 'search' }}
-          size={22}
-        />
+        <ThemedView style={styles.iconCircle}>
+          <SymbolView
+            tintColor={colors.primary}
+            name={{ ios: 'bell', android: 'notifications', web: 'search' }}
+            size={26}
+          />
+        </ThemedView>
       </Pressable>
     </ThemedView>
   );
@@ -50,6 +52,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
   },
   menuButton: {
     padding: Spacing.one,
@@ -59,5 +62,13 @@ const styles = StyleSheet.create({
   },
   notificationButton: {
     padding: Spacing.one,
+  },
+  iconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(128,128,128,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

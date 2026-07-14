@@ -30,6 +30,7 @@ export default function SignupScreen() {
 
   const [, googleResponse, googlePrompt] = Google.useIdTokenAuthRequest({
     iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
     webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
   })
 
@@ -140,7 +141,7 @@ export default function SignupScreen() {
           <Pressable
             style={({ pressed }) => [
               styles.button,
-              { backgroundColor: '#7B4F2C' },
+              { backgroundColor: '#C4956A' },
               pressed && styles.buttonPressed,
               submitting && styles.buttonDisabled,
             ]}
@@ -186,7 +187,7 @@ export default function SignupScreen() {
           </ThemedText>
           <Link href="/(auth)/login" asChild>
             <Pressable>
-              <ThemedText type="default" style={{ color: '#7B4F2C' }}>
+              <ThemedText type="default" style={{ color: '#C4956A' }}>
                 Faça login
               </ThemedText>
             </Pressable>

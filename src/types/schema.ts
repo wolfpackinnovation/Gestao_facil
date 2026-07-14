@@ -81,6 +81,7 @@ export interface Sale extends BaseEntity {
   paymentMethod?: string
   status?: string
   paidAmount?: number
+  desconto?: number
 }
 
 export interface SaleItem extends BaseEntity {
@@ -173,6 +174,21 @@ export interface ProductionConsumption extends BaseEntity {
   productionId: string
   productId: string
   quantity: number
+}
+
+export interface FiscalDocument extends BaseEntity {
+  companyId: string
+  type: string
+  party: string
+  value: number
+  date: string
+  number: string
+  status: string
+  status2: string
+  entrada: boolean
+  fileName?: string
+  fileUrl?: string
+  notes?: string
 }
 
 export interface Inventory extends BaseEntity {

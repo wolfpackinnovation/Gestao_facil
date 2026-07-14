@@ -8,6 +8,7 @@ import { DateNavigator } from '@/components/date-navigator';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Loading } from '@/utils/loading';
+import { PieChart } from '@/components/pie-chart';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/contexts/auth';
@@ -192,35 +193,33 @@ export default function RelatoriosScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
         >
-          <ThemedView style={styles.headerSection}>
-            <ThemedText type="title" style={styles.title}>Relatórios</ThemedText>
-          </ThemedView>
+
 
           <DateNavigator selectedDate={referenceDate} onDateChange={changeMonth} mode="month" />
 
           {/* Summary Cards */}
           <View style={styles.summaryGrid}>
-            <ThemedView style={[styles.summaryCard, { borderLeftColor: '#7B4F2C' }]}>
+            <ThemedView style={styles.summaryCard}>
               <ThemedText type="small" themeColor="textSecondary">Receitas</ThemedText>
-              <ThemedText style={[styles.summaryValue, { color: '#7B4F2C' }]}>
+              <ThemedText style={[styles.summaryValue, { color: '#C4956A' }]}>
                 {formatCurrency(totalRevenue)}
               </ThemedText>
               <ThemedText type="small" themeColor="textSecondary">{sales.length} vendas</ThemedText>
             </ThemedView>
-            <ThemedView style={[styles.summaryCard, { borderLeftColor: '#DC2626' }]}>
+            <ThemedView style={styles.summaryCard}>
               <ThemedText type="small" themeColor="textSecondary">Despesas</ThemedText>
               <ThemedText style={[styles.summaryValue, { color: '#DC2626' }]}>
                 {formatCurrency(totalExpenses)}
               </ThemedText>
               <ThemedText type="small" themeColor="textSecondary">{despesasPeriodo.length} despesas</ThemedText>
             </ThemedView>
-            <ThemedView style={[styles.summaryCard, { borderLeftColor: '#F59E0B' }]}>
+            <ThemedView style={styles.summaryCard}>
               <ThemedText type="small" themeColor="textSecondary">Lucro</ThemedText>
-              <ThemedText style={[styles.summaryValue, { color: profit >= 0 ? '#7B4F2C' : '#DC2626' }]}>
+              <ThemedText style={[styles.summaryValue, { color: profit >= 0 ? '#C4956A' : '#DC2626' }]}>
                 {formatCurrency(profit)}
               </ThemedText>
             </ThemedView>
-            <ThemedView style={[styles.summaryCard, { borderLeftColor: '#3B82F6' }]}>
+            <ThemedView style={styles.summaryCard}>
               <ThemedText type="small" themeColor="textSecondary">Ticket Médio</ThemedText>
               <ThemedText style={[styles.summaryValue, { color: '#3B82F6' }]}>
                 {sales.length > 0 ? formatCurrency(totalRevenue / sales.length) : 'R$ 0,00'}
@@ -229,114 +228,132 @@ export default function RelatoriosScreen() {
           </View>
 
           {/* Payment Methods */}
-          <ThemedView style={styles.card}>
-            <ThemedText style={styles.cardTitle}>Formas de Pagamento</ThemedText>
-            {methodOrder.map((method) => {
-              const total = totalsByMethod[method] ?? 0;
-              if (total === 0 && totalsByMethod[method] === undefined) return null;
-              const totalAll = Object.values(totalsByMethod).reduce((a, b) => a + b, 0);
-              const pct = totalAll > 0 ? (total / totalAll) * 100 : 0;
-              return (
-                <View key={method} style={styles.paymentRow}>
-                  <View style={styles.paymentLeft}>
-                    <Ionicons name={paymentIcons[method]} size={18} color={colors.text} />
-                    <ThemedText type="default">{paymentLabels[method]}</ThemedText>
-                  </View>
-                  <ThemedView style={{ alignItems: 'flex-end' }}>
-                    <ThemedText style={{ fontWeight: '700' }}>{formatCurrency(total)}</ThemedText>
-                    <ThemedText type="small" themeColor="textSecondary">{pct.toFixed(1)}%</ThemedText>
-                  </ThemedView>
-                </View>
-              );
-            })}
-          </ThemedView>
-
-          {/* Daily Revenue Chart */}
-          {dailyRevenue.length > 0 && (
+          <ThemedView style={styles.sectionGroup}>
+            <ThemedText style={styles.sectionTitle}>Formas de Pagamento</ThemedText>
             <ThemedView style={styles.card}>
-              <ThemedText style={styles.cardTitle}>Receitas Diárias</ThemedText>
-              <View style={styles.dailyChart}>
-                {dailyRevenue.map((r) => (
-                  <View key={r.day} style={styles.dailyCol}>
-                    <View
-                      style={[
-                        styles.dailyBar,
-                        {
-                          height: Math.max((r.value / maxDailyRevenue) * 80, 4),
-                          backgroundColor: '#7B4F2C',
-                        },
-                      ]}
-                    />
-                    <ThemedText style={styles.dailyLabel}>{r.label}</ThemedText>
-                  </View>
-                ))}
-              </View>
-            </ThemedView>
-          )}
-
-          {/* Top Clients */}
-          {salesByClient.length > 0 && (
-            <ThemedView style={styles.card}>
-              <ThemedText style={styles.cardTitle}>Top Clientes</ThemedText>
-              {salesByClient.map((item, idx) => (
-                <View key={item.clientId} style={styles.clientRow}>
-                  <ThemedView style={styles.rankCircle}>
-                    <ThemedText style={{ fontWeight: '700', fontSize: 12 }}>{idx + 1}</ThemedText>
-                  </ThemedView>
-                  <ThemedView style={{ flex: 1 }}>
-                    <ThemedText type="default" numberOfLines={1}>{item.name}</ThemedText>
-                    <ThemedText type="small" themeColor="textSecondary">{item.count} compras</ThemedText>
-                  </ThemedView>
-                  <ThemedText style={{ fontWeight: '700' }}>{formatCurrency(item.total)}</ThemedText>
-                </View>
-              ))}
-            </ThemedView>
-          )}
-
-          {/* Expenses by Category */}
-          {expensesByCategory.length > 0 && (
-            <ThemedView style={styles.card}>
-              <ThemedText style={styles.cardTitle}>Despesas por Categoria</ThemedText>
-              {expensesByCategory.slice(0, 5).map((item) => {
-                const pct = totalExpenses > 0 ? (item.valor / totalExpenses) * 100 : 0;
+              <PieChart
+                data={[
+                  { label: 'Dinheiro', value: totalsByMethod.dinheiro ?? 0, color: '#22C55E' },
+                  { label: 'Cartão', value: totalsByMethod['cartão'] ?? 0, color: '#3B82F6' },
+                  { label: 'Pix', value: totalsByMethod.pix ?? 0, color: '#C4956A' },
+                  { label: 'Fiado', value: totalsByMethod.fiado ?? 0, color: '#F59E0B' },
+                ]}
+              />
+              {methodOrder.map((method) => {
+                const total = totalsByMethod[method] ?? 0;
+                if (total === 0 && totalsByMethod[method] === undefined) return null;
+                const totalAll = Object.values(totalsByMethod).reduce((a, b) => a + b, 0);
+                const pct = totalAll > 0 ? (total / totalAll) * 100 : 0;
                 return (
-                  <View key={item.categoria} style={styles.expenseRow}>
-                    <ThemedView style={{ flex: 1 }}>
-                      <ThemedText type="default" numberOfLines={1}>{item.categoria}</ThemedText>
-                      <View style={styles.expenseBarBg}>
-                        <View style={[styles.expenseBarFill, { width: `${pct}%`, backgroundColor: '#DC2626' }]} />
-                      </View>
-                    </ThemedView>
-                    <ThemedView style={{ alignItems: 'flex-end', marginLeft: Spacing.two }}>
-                      <ThemedText style={{ fontWeight: '700' }}>{formatCurrency(item.valor)}</ThemedText>
+                  <View key={method} style={styles.paymentRow}>
+                    <View style={styles.paymentLeft}>
+                      <Ionicons name={paymentIcons[method]} size={18} color={colors.text} />
+                      <ThemedText type="default">{paymentLabels[method]}</ThemedText>
+                    </View>
+                    <ThemedView style={{ alignItems: 'flex-end' }}>
+                      <ThemedText style={{ fontWeight: '700' }}>{formatCurrency(total)}</ThemedText>
                       <ThemedText type="small" themeColor="textSecondary">{pct.toFixed(1)}%</ThemedText>
                     </ThemedView>
                   </View>
                 );
               })}
             </ThemedView>
+          </ThemedView>
+
+          {/* Daily Revenue Chart */}
+          {dailyRevenue.length > 0 && (
+            <ThemedView style={styles.sectionGroup}>
+              <ThemedText style={styles.sectionTitle}>Receitas Diárias</ThemedText>
+              <ThemedView style={styles.card}>
+                <View style={styles.dailyChart}>
+                  {dailyRevenue.map((r) => (
+                    <View key={r.day} style={styles.dailyCol}>
+                      <View
+                        style={[
+                          styles.dailyBar,
+                          {
+                            height: Math.max((r.value / maxDailyRevenue) * 80, 4),
+                            backgroundColor: '#C4956A',
+                          },
+                        ]}
+                      />
+                      <ThemedText style={styles.dailyLabel}>{r.label}</ThemedText>
+                    </View>
+                  ))}
+                </View>
+              </ThemedView>
+            </ThemedView>
+          )}
+
+          {/* Top Clients */}
+          {salesByClient.length > 0 && (
+            <ThemedView style={styles.sectionGroup}>
+              <ThemedText style={styles.sectionTitle}>Top Clientes</ThemedText>
+              <ThemedView style={styles.card}>
+                {salesByClient.map((item, idx) => (
+                  <View key={item.clientId} style={styles.clientRow}>
+                    <ThemedView style={styles.rankCircle}>
+                      <ThemedText style={{ fontWeight: '700', fontSize: 12 }}>{idx + 1}</ThemedText>
+                    </ThemedView>
+                    <ThemedView style={{ flex: 1 }}>
+                      <ThemedText type="default" numberOfLines={1}>{item.name}</ThemedText>
+                      <ThemedText type="small" themeColor="textSecondary">{item.count} compras</ThemedText>
+                    </ThemedView>
+                    <ThemedText style={{ fontWeight: '700' }}>{formatCurrency(item.total)}</ThemedText>
+                  </View>
+                ))}
+              </ThemedView>
+            </ThemedView>
+          )}
+
+          {/* Expenses by Category */}
+          {expensesByCategory.length > 0 && (
+            <ThemedView style={styles.sectionGroup}>
+              <ThemedText style={styles.sectionTitle}>Despesas por Categoria</ThemedText>
+              <ThemedView style={styles.card}>
+                {expensesByCategory.slice(0, 5).map((item) => {
+                  const pct = totalExpenses > 0 ? (item.valor / totalExpenses) * 100 : 0;
+                  return (
+                    <View key={item.categoria} style={styles.expenseRow}>
+                      <ThemedView style={{ flex: 1 }}>
+                        <ThemedText type="default" numberOfLines={1}>{item.categoria}</ThemedText>
+                        <View style={styles.expenseBarBg}>
+                          <View style={[styles.expenseBarFill, { width: `${pct}%`, backgroundColor: '#DC2626' }]} />
+                        </View>
+                      </ThemedView>
+                      <ThemedView style={{ alignItems: 'flex-end', marginLeft: Spacing.two }}>
+                        <ThemedText style={{ fontWeight: '700' }}>{formatCurrency(item.valor)}</ThemedText>
+                        <ThemedText type="small" themeColor="textSecondary">{pct.toFixed(1)}%</ThemedText>
+                      </ThemedView>
+                    </View>
+                  );
+                })}
+              </ThemedView>
+            </ThemedView>
           )}
 
           {/* Low Stock Alert */}
           {lowStockProducts.length > 0 && (
-            <ThemedView style={styles.card}>
+            <ThemedView style={styles.sectionGroup}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.two }}>
                 <Ionicons name="alert-circle" size={18} color="#F59E0B" />
-                <ThemedText style={styles.cardTitle}>Estoque Baixo</ThemedText>
+                <ThemedText style={styles.sectionTitle}>Estoque Baixo</ThemedText>
               </View>
-              {lowStockProducts.slice(0, 5).map((p: any) => (
-                <View key={p.id} style={styles.lowStockRow}>
-                  <ThemedText style={{ flex: 1 }} numberOfLines={1}>{p.nome}</ThemedText>
-                  <ThemedText
-                    style={{
-                      fontWeight: '700',
-                      color: p.estoqueAtual <= 0 ? '#DC2626' : '#F59E0B',
-                    }}
-                  >
-                    {p.estoqueAtual} {p.unidade}
-                  </ThemedText>
-                </View>
-              ))}
+              <ThemedView style={styles.card}>
+                {lowStockProducts.slice(0, 5).map((p: any) => (
+                  <View key={p.id} style={styles.lowStockRow}>
+                    <ThemedText style={{ flex: 1 }} numberOfLines={1}>{p.nome}</ThemedText>
+                    <ThemedText
+                      style={{
+                        fontWeight: '700',
+                        color: p.estoqueAtual <= 0 ? '#DC2626' : '#F59E0B',
+                      }}
+                    >
+                      {p.estoqueAtual} {p.unidade}
+                    </ThemedText>
+                  </View>
+                ))}
+              </ThemedView>
             </ThemedView>
           )}
 
@@ -377,10 +394,9 @@ const styles = StyleSheet.create({
     width: '48%',
     padding: Spacing.three,
     borderRadius: Spacing.three,
-    gap: Spacing.half,
-    borderLeftWidth: 4,
+    gap: Spacing.one,
     borderWidth: 1,
-    borderColor: 'rgba(128,128,128,0.12)',
+    borderColor: 'rgba(128,128,128,0.2)',
   },
   summaryValue: {
     fontSize: 20,
@@ -390,16 +406,24 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: Spacing.three,
     padding: Spacing.three,
-    gap: Spacing.two,
+    gap: Spacing.one,
     borderWidth: 1,
-    borderColor: 'rgba(128,128,128,0.15)',
+    borderColor: 'rgba(128,128,128,0.2)',
+  },
+  sectionGroup: {
+    gap: Spacing.two,
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 20,
+    letterSpacing: 1,
   },
   cardTitle: {
     fontSize: 14,
     fontWeight: '700',
     lineHeight: 20,
     letterSpacing: 1,
-    marginBottom: Spacing.one,
   },
   paymentRow: {
     flexDirection: 'row',

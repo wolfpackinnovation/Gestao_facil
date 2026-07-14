@@ -23,6 +23,7 @@ export const Collections = {
   payments: 'payments',
   desossas: 'desossas',
   expenses: 'expenses',
+  fiscalDocuments: 'fiscalDocuments',
 } as const
 
 export type CollectionName = (typeof Collections)[keyof typeof Collections]

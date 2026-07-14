@@ -297,32 +297,38 @@ export default function HomeScreen() {
           </View>
 
           {/* Week Sales Chart */}
-          <ThemedText style={styles.sectionTitle}>Vendas da Semana</ThemedText>
-          {weekTotals.length > 0 && <WeekChart data={weekTotals} />}
+          <ThemedView style={styles.sectionGroup}>
+            <ThemedText style={styles.sectionTitle}>Vendas da Semana</ThemedText>
+            {weekTotals.length > 0 && <WeekChart data={weekTotals} />}
+          </ThemedView>
 
           {/* Alerts */}
-          <ThemedText style={styles.sectionTitle}>Atenção</ThemedText>
-          <View style={styles.alertBox}>
-            <ThemedText style={styles.alertItem}>
-              • {lowStockProducts.length} {lowStockProducts.length === 1 ? 'produto acabando' : 'produtos acabando'}
-            </ThemedText>
-            <ThemedText style={styles.alertItem}>• 0 contas vencem hoje</ThemedText>
-            <ThemedText style={styles.alertItem}>• 0 cliente possui fiado atrasado</ThemedText>
-          </View>
+          <ThemedView style={styles.sectionGroup}>
+            <ThemedText style={styles.sectionTitle}>Atenção</ThemedText>
+            <View style={styles.alertBox}>
+              <ThemedText style={styles.alertItem}>
+                • {lowStockProducts.length} {lowStockProducts.length === 1 ? 'produto acabando' : 'produtos acabando'}
+              </ThemedText>
+              <ThemedText style={styles.alertItem}>• 0 contas vencem hoje</ThemedText>
+              <ThemedText style={styles.alertItem}>• 0 cliente possui fiado atrasado</ThemedText>
+            </View>
+          </ThemedView>
 
           {/* Top Products */}
-          <ThemedText style={styles.sectionTitle}>Produtos mais vendidos</ThemedText>
-          <View style={styles.topProductsBox}>
-            {topProducts.length === 0 ? (
-              <ThemedText style={styles.emptyText}>Nenhum produto vendido hoje</ThemedText>
-            ) : (
-              topProducts.map((p, i) => (
-                <ThemedText key={p.name} style={styles.topProductItem}>
-                  {i + 1}. {p.name}
-                </ThemedText>
-              ))
-            )}
-          </View>
+          <ThemedView style={styles.sectionGroup}>
+            <ThemedText style={styles.sectionTitle}>Produtos mais vendidos</ThemedText>
+            <View style={styles.topProductsBox}>
+              {topProducts.length === 0 ? (
+                <ThemedText style={styles.emptyText}>Nenhum produto vendido hoje</ThemedText>
+              ) : (
+                topProducts.map((p, i) => (
+                  <ThemedText key={p.name} style={styles.topProductItem}>
+                    {i + 1}. {p.name}
+                  </ThemedText>
+                ))
+              )}
+            </View>
+          </ThemedView>
 
         </ScrollView>
       </SafeAreaView>
@@ -336,7 +342,7 @@ export default function HomeScreen() {
 
       {/* FAB Menu Items */}
       {[
-        { label: 'Nova Venda', icon: '💰', onPress: () => handleAction('/nova-venda') },
+        { label: 'Nova Venda', icon: '💰', onPress: () => handleAction('/nova-venda?from=/(tabs)'), },
         { label: 'Novo Produto', icon: '📦', onPress: () => handleAction('/estoque') },
         { label: 'Adicionar Dívida', icon: '💳', onPress: handleAddDivida },
         { label: 'Receber Fiado', icon: '📝', onPress: () => handleAction('/clientes') },
@@ -374,7 +380,7 @@ export default function HomeScreen() {
       {/* FAB Button */}
       <Pressable
         onPress={toggleFab}
-        style={[styles.fab, { backgroundColor: '#7B4F2C' }]}
+        style={[styles.fab, { backgroundColor: '#C4956A' }]}
       >
         <Animated.Text
           style={[
@@ -435,7 +441,7 @@ export default function HomeScreen() {
 
               <Pressable
                 onPress={handleSaveDivida}
-                style={[styles.saveButton, { backgroundColor: '#7B4F2C' }]}
+                style={[styles.saveButton, { backgroundColor: '#C4956A' }]}
               >
                 <ThemedText style={{ fontWeight: '600', fontSize: 16, color: '#fff' }}>
                   Salvar Dívida
@@ -460,7 +466,7 @@ function WeekChart({ data }: { data: number[] }) {
       return {
         label: weekDays[d.getDay()],
         value,
-        height: Math.max((value / maxVal) * 100, 3),
+        height: Math.max((value / maxVal) * 85, 3),
       };
     });
   }, [data]);
@@ -470,12 +476,13 @@ function WeekChart({ data }: { data: number[] }) {
       <View style={styles.chartBars}>
         {bars.map((bar, idx) => (
           <View key={idx} style={styles.chartCol}>
+            <ThemedText style={styles.chartValue}>{formatCurrency(bar.value)}</ThemedText>
             <View
               style={[
                 styles.chartBar,
                 {
                   height: bar.height,
-                  backgroundColor: idx === 6 ? '#7B4F2C' : theme.textSecondary,
+                  backgroundColor: bar.value > 0 ? '#16A34A' : theme.textSecondary,
                 },
               ]}
             />
@@ -496,7 +503,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     width: '100%',
   },
-  scrollContent: { gap: Spacing.four, paddingBottom: Spacing.six },
+  scrollContent: { gap: Spacing.three, paddingBottom: Spacing.six },
 
   headerSection: { paddingTop: Spacing.two },
   greeting: { fontSize: 24, fontWeight: '700', lineHeight: 32 },
@@ -512,7 +519,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: '100%',
     alignSelf: 'center',
-    backgroundColor: '#7B4F2C',
+    backgroundColor: '#C4956A',
     gap: Spacing.three,
     overflow: 'hidden',
   },
@@ -574,13 +581,13 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
 
-  statsGrid: { gap: Spacing.three },
-  statsRow: { flexDirection: 'row', gap: Spacing.three },
+  statsGrid: { gap: Spacing.two },
+  statsRow: { flexDirection: 'row', gap: Spacing.two },
   statBox: {
     flex: 1,
     borderRadius: Spacing.three,
-    paddingVertical: Spacing.three,
-    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.two,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: 'rgba(128,128,128,0.2)',
@@ -588,19 +595,22 @@ const styles = StyleSheet.create({
   statValue: { fontSize: 20, fontWeight: '700', lineHeight: 26 },
   statLabel: { fontSize: 13, lineHeight: 18, opacity: 0.6, marginTop: Spacing.half },
 
+  sectionGroup: {
+    gap: Spacing.two,
+  },
   sectionTitle: {
     fontSize: 14,
     fontWeight: '700',
     lineHeight: 20,
     letterSpacing: 1,
-    marginBottom: Spacing.three,
   },
 
   chartBox: { borderRadius: Spacing.three, padding: Spacing.three, borderWidth: 1, borderColor: 'rgba(128,128,128,0.2)' },
-  chartBars: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', height: 110 },
+  chartBars: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', height: 130 },
   chartCol: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', gap: Spacing.one },
   chartBar: { width: 24, borderRadius: Spacing.one },
   chartLabel: { fontSize: 11, lineHeight: 14, opacity: 0.5 },
+  chartValue: { fontSize: 9, fontWeight: '600', opacity: 0.6, marginBottom: 2 },
 
   alertBox: { borderRadius: Spacing.three, padding: Spacing.three, gap: Spacing.one, borderWidth: 1, borderColor: 'rgba(128,128,128,0.2)' },
   alertItem: { fontSize: 14, lineHeight: 22 },

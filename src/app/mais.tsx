@@ -60,10 +60,10 @@ const styles = StyleSheet.create({
     fontSize: 64,
   },
   placeholder: {
-    gap: Spacing.three,
+    gap: Spacing.two,
     alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.three,
     borderRadius: Spacing.four,
     alignItems: 'center',
   },

@@ -66,7 +66,7 @@ export default function PerfilScreen() {
           <Pressable onPress={() => router.back()} style={styles.backButton}>
             <SymbolView
               tintColor={colors.text}
-              name={{ ios: 'chevron.left', web: 'arrow_back' }}
+              name={{ ios: 'chevron.left', android: 'arrow_back', web: 'arrow_back' }}
               size={24}
             />
             <ThemedText type="smallBold">Voltar</ThemedText>

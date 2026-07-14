@@ -10,6 +10,7 @@ export interface CreateSaleInput {
   totalAmount: number
   paymentMethod?: string
   status?: string
+  desconto?: number
 }
 
 export async function createSale(data: Omit<Sale, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
