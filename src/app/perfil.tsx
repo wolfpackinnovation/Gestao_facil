@@ -22,6 +22,7 @@ import { useTheme } from '@/hooks/use-theme'
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme'
 import { auth } from '@/lib/firebase'
 
+
 export default function PerfilScreen() {
   const { user, logout } = useAuth()
   const colors = useTheme()

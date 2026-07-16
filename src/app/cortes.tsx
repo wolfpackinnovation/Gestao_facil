@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   Alert,
   FlatList,
@@ -9,9 +9,11 @@ import {
   ScrollView,
   StyleSheet,
   TextInput,
+  View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect, useRouter, useLocalSearchParams } from 'expo-router';
+import { SymbolView } from 'expo-symbols';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -21,15 +23,22 @@ import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/contexts/auth';
 import {
   formatCurrency,
+  getProdutos,
+  saveProduto,
+  type Produto,
 } from '@/services/estoque-storage';
+import { formatCurrencyInput, parseCurrencyInput } from '@/utils/format';
 import {
   getDesossas,
   createDesossa,
+  updateDesossa,
   deleteDesossa,
   getCortesPorTipo,
   type DesossaRecord,
   type DesossaItem,
 } from '@/services/desossa-service';
+import { createDespesa, getDespesas, deleteDespesa } from '@/services/despesa-service';
+import { createLote, listAllLotesByProduct, gerarCodigoLote } from '@/services/lote-service';
 
 const TIPOS_ANIMAL = [
   { id: 'boi', label: 'Boi', emoji: '🐂' },
@@ -41,10 +50,6 @@ const TIPOS_ANIMAL = [
 interface CorteForm {
   nome: string
   peso: string
-  custo: string
-  margemLucro: string
-  quebra: string
-  dataValidade: string
 }
 
 function formatDateBR(dateStr: string): string {
@@ -61,15 +66,29 @@ export default function CortesScreen() {
   const theme = useTheme();
   const { user } = useAuth();
   const companyId = user?.uid ?? '';
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ editId?: string }>();
   const [desossas, setDesossas] = useState<DesossaRecord[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [step, setStep] = useState<'tipo' | 'cortes' | 'confirm'>('tipo');
 
   const [tipoAnimal, setTipoAnimal] = useState('boi');
   const [animalNome, setAnimalNome] = useState('');
+  const [pesoAnimal, setPesoAnimal] = useState('');
+  const [valorAnimal, setValorAnimal] = useState('');
   const [cortes, setCortes] = useState<CorteForm[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (params.editId && desossas.length > 0) {
+      const record = desossas.find((d) => d.id === params.editId);
+      if (record) openEdit(record);
+    }
+  }, [params.editId, desossas]);
 
   const loadData = useCallback(async () => {
     if (!companyId) return;
@@ -86,9 +105,12 @@ export default function CortesScreen() {
   );
 
   function openNew() {
+    setEditingId(null);
     setStep('tipo');
     setTipoAnimal('boi');
     setAnimalNome('');
+    setPesoAnimal('');
+    setValorAnimal('');
     setCortes([]);
     setErrors({});
     setModalVisible(true);
@@ -107,10 +129,6 @@ export default function CortesScreen() {
       padroes.map((c) => ({
         nome: c.nome,
         peso: '',
-        custo: '',
-        margemLucro: '',
-        quebra: '',
-        dataValidade: '',
       }))
     );
     setStep('cortes');
@@ -129,34 +147,23 @@ export default function CortesScreen() {
   }
 
   function addCustomCorte() {
-    setCortes((prev) => [...prev, { nome: '', peso: '', custo: '', margemLucro: '', quebra: '', dataValidade: '' }]);
+    setCortes((prev) => [...prev, { nome: '', peso: '' }]);
   }
 
   function removeCorte(index: number) {
     setCortes((prev) => prev.filter((_, i) => i !== index));
   }
 
-  function calcPrecoCorte(corte: CorteForm): number {
-    const custo = Number(corte.custo);
-    if (!custo || custo <= 0) return 0;
-    const margem = Number(corte.margemLucro) || 0;
-    const quebra = Number(corte.quebra) || 0;
-    const custoAjustado = custo * (1 + quebra / 100);
-    return Math.round(custoAjustado * (1 + margem / 100) * 100) / 100;
-  }
-
   function validateCortes(): boolean {
     const newErrors: Record<string, string> = {};
-    if (tipoAnimal === 'outro' && !animalNome.trim())
-      newErrors.animalNome = 'Informe o tipo de animal';
+    if (!pesoAnimal || isNaN(Number(pesoAnimal)) || Number(pesoAnimal) <= 0)
+      newErrors.pesoAnimal = 'Informe o peso total';
+    if (!valorAnimal || parseCurrencyInput(valorAnimal) <= 0)
+      newErrors.valorAnimal = 'Informe o valor pago';
     cortes.forEach((c, i) => {
       if (!c.peso || isNaN(Number(c.peso)) || Number(c.peso) < 0)
         newErrors[`${i}_peso`] = 'Inválido';
       if (!c.nome.trim()) newErrors[`${i}_nome`] = 'Obrigatório';
-      if (!c.custo || isNaN(Number(c.custo)) || Number(c.custo) <= 0)
-        newErrors[`${i}_custo`] = 'Informe o custo';
-      if (!c.margemLucro || isNaN(Number(c.margemLucro)) || Number(c.margemLucro) < 0)
-        newErrors[`${i}_margemLucro`] = 'Informe a margem';
     });
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -166,55 +173,196 @@ export default function CortesScreen() {
     if (validateCortes()) setStep('confirm');
   }
 
+  async function criarProdutosELotesDaDesossa(nomeAnimal: string, items: { nome: string; peso: number; custo: number }[]) {
+    const produtosExistentes = await getProdutos(companyId)
+    const categoria = tipoAnimal === 'boi' ? 'Carnes' : tipoAnimal === 'porco' ? 'Carnes' : tipoAnimal === 'frango' ? 'Aves' : 'Outros'
+    const hoje = new Date()
+    const validade = new Date(hoje)
+    validade.setDate(validade.getDate() + 30)
+    const dataValidade = `${String(validade.getDate()).padStart(2, '0')}/${String(validade.getMonth() + 1).padStart(2, '0')}/${validade.getFullYear()}`
+    const dataEntrada = `${String(hoje.getDate()).padStart(2, '0')}/${String(hoje.getMonth() + 1).padStart(2, '0')}/${hoje.getFullYear()}`
+    const fornecedorRef = animalNome.trim() || nomeAnimal
+
+    for (const item of items) {
+      if (item.peso <= 0) continue
+      let produto = produtosExistentes.find(p => p.nome.toLowerCase() === item.nome.toLowerCase())
+      if (!produto) {
+        const id = `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
+        const codigo = 'P' + String(produtosExistentes.length + 1).padStart(3, '0')
+        const novoProduto: Produto = {
+          id,
+          companyId,
+          codigo,
+          nome: item.nome,
+          categoria,
+          unidade: 'kg',
+          quantidade: 1,
+          custo: item.custo / item.peso,
+          precoVenda: (item.custo / item.peso) * 1.3,
+          estoqueMinimo: 0,
+          dataValidade,
+          fornecedor: fornecedorRef,
+          createdAt: new Date().toISOString(),
+        }
+        await saveProduto(novoProduto)
+        produto = novoProduto
+        produtosExistentes.push(novoProduto)
+      }
+
+      const lotesExistentes = await listAllLotesByProduct(produto.id)
+      const codigosExistentes = lotesExistentes.map(l => l.codigo)
+      const codigoLote = gerarCodigoLote(codigosExistentes, `L${animalNome.replace(/\s/g, '').slice(0, 3).toUpperCase() || 'LT'}`)
+      await createLote({
+        companyId,
+        productId: produto.id,
+        codigo: codigoLote,
+        quantidadeInicial: item.peso,
+        custoUnitario: item.custo / item.peso,
+        dataValidade,
+        dataEntrada,
+        fornecedor: fornecedorRef,
+        observacao: `Desossa ${nomeAnimal}`,
+        origem: `desossa:${nomeAnimal}`,
+      })
+    }
+  }
+
   async function handleSave() {
+    if (saving) return;
     if (!validateCortes()) return;
+    setSaving(true);
+
+    const pesoTotalAnimal = Number(pesoAnimal);
+    const valorTotalAnimal = parseCurrencyInput(valorAnimal);
+    const custoMedioKg = valorTotalAnimal / pesoTotalAnimal;
 
     const items = cortes
       .filter((c) => Number(c.peso) > 0)
-      .map((c) => ({
-        nome: c.nome.trim(),
-        peso: Number(c.peso),
-        custo: Number(c.custo),
-        precoVenda: calcPrecoCorte(c),
-        dataValidade: c.dataValidade || new Date().toLocaleDateString('pt-BR'),
-      }));
+      .map((c) => {
+        const peso = Number(c.peso);
+        const custo = peso * custoMedioKg;
+        return {
+          nome: c.nome.trim(),
+          peso,
+          custo: Math.round(custo * 100) / 100,
+          precoVenda: 0,
+          dataValidade: '',
+        };
+      });
 
     if (items.length === 0) {
       Alert.alert('Aviso', 'Adicione pelo menos um corte com peso maior que zero.');
       return;
     }
 
-    const pesoTotal = items.reduce((s, i) => s + i.peso, 0);
+    const pesoDistribuido = items.reduce((s, i) => s + i.peso, 0);
     const custoTotal = items.reduce((s, i) => s + i.custo, 0);
 
     try {
       const nome = animalNome.trim() || `${TIPOS_ANIMAL.find((t) => t.id === tipoAnimal)?.label ?? ''} ${new Date().toLocaleDateString('pt-BR')}`;
-      await createDesossa(
+
+      if (editingId) {
+        await updateDesossa(editingId, {
+          animalNome: nome,
+          pesoTotal: pesoDistribuido,
+          custoTotal,
+          items,
+        });
+        await loadData();
+        closeModal();
+        setSaving(false);
+        router.replace('/cortes');
+        Alert.alert('Desossa atualizada');
+        return;
+      }
+
+      const desossaId = await createDesossa(
         companyId,
         tipoAnimal,
         nome,
-        pesoTotal,
+        pesoDistribuido,
         custoTotal,
         items
       );
+
+      await criarProdutosELotesDaDesossa(nome, items).catch((err) => {
+        console.warn('Falha ao criar produtos/lotes da desossa:', err);
+      });
+
       await loadData();
       closeModal();
+      setSaving(false);
+
+      Alert.alert(
+        'Desossa salva',
+        `Animal: ${nome}\nPeso: ${pesoTotalAnimal}kg\nValor: ${formatCurrency(valorTotalAnimal)}\n\nDeseja registrar esse valor como despesa?`,
+        [
+          { text: 'Não', style: 'cancel' },
+          {
+            text: 'Sim, registrar',
+            onPress: async () => {
+              try {
+                await createDespesa({
+                  companyId,
+                  descricao: `Compra de ${nome}`,
+                  valor: valorTotalAnimal,
+                  categoria: 'Compra de Produtos',
+                  data: new Date().toISOString().slice(0, 10),
+                  observacao: `desossaId:${desossaId} | Desossa de ${tipoLabel(tipoAnimal)} - ${pesoTotalAnimal}kg`,
+                  pago: true,
+                });
+                Alert.alert('Despesa registrada', `R$ ${valorTotalAnimal.toFixed(2)} em "Compra de Produtos"`);
+              } catch {}
+            },
+          },
+        ]
+      );
+      setSaving(false);
     } catch (err: any) {
+      setSaving(false);
       Alert.alert('Erro', err.message ?? 'Não foi possível realizar a desossa.');
     }
   }
 
+  function openEdit(record: DesossaRecord) {
+    setEditingId(record.id);
+    setTipoAnimal(record.tipoAnimal);
+    setAnimalNome(record.animalNome);
+    setPesoAnimal(String(record.pesoTotal));
+    setValorAnimal(formatCurrency(record.custoTotal));
+    setCortes(
+      record.items.map((i) => ({
+        nome: i.nome,
+        peso: String(i.peso),
+      }))
+    );
+    setErrors({});
+    setStep('cortes');
+    setModalVisible(true);
+  }
+
   function confirmDelete(record: DesossaRecord) {
     Alert.alert(
-      'Excluir Desossa',
-      `Deseja excluir a desossa de "${record.animalNome}"?`,
+      'Desossa',
+      `O que deseja fazer com "${record.animalNome}"?`,
       [
         { text: 'Cancelar', style: 'cancel' },
         {
-          text: 'Excluir',
+          text: '✏️ Editar',
+          onPress: () => openEdit(record),
+        },
+        {
+          text: '🗑️ Excluir',
           style: 'destructive',
           onPress: async () => {
             await deleteDesossa(record.id);
+
+            const despesas = await getDespesas(companyId);
+            const linked = despesas.find((d) => d.observacao?.includes(`desossaId:${record.id}`));
+            if (linked) {
+              await deleteDespesa(linked.id);
+            }
+
             await loadData();
           },
         },
@@ -222,18 +370,13 @@ export default function CortesScreen() {
     );
   }
 
-  const totalPeso = (items: DesossaItem[]) =>
-    items.reduce((sum, i) => sum + i.peso, 0);
-
-  const totalCusto = (items: DesossaItem[]) =>
-    items.reduce((sum, i) => sum + i.custo, 0);
-
   const tipoLabel = (tipo: string) =>
     TIPOS_ANIMAL.find((t) => t.id === tipo)?.label ?? tipo;
 
   function renderDesossa({ item }: { item: DesossaRecord }) {
     return (
       <Pressable
+        onPress={() => router.push(`/desossa-detalhe?id=${item.id}` as any)}
         onLongPress={() => confirmDelete(item)}
         style={({ pressed }) => [
           styles.card,
@@ -258,28 +401,6 @@ export default function CortesScreen() {
             </ThemedText>
           </ThemedView>
         </ThemedView>
-
-        <ThemedView style={styles.cardItems}>
-          {item.items.map((piece, idx) => (
-            <ThemedView key={idx} style={styles.cardItemRow}>
-              <ThemedText style={styles.cardItemNome} numberOfLines={1}>
-                {piece.nome}
-              </ThemedText>
-              <ThemedText style={styles.cardItemPeso}>
-                {piece.peso}kg
-              </ThemedText>
-              <ThemedText style={styles.cardItemCusto}>
-                {formatCurrency(piece.custo)}
-              </ThemedText>
-            </ThemedView>
-          ))}
-        </ThemedView>
-
-        <ThemedView style={styles.cardFooter}>
-          <ThemedText type="small" themeColor="textSecondary">
-            {item.items.length} cortes • Total: {totalPeso(item.items).toFixed(2)}kg
-          </ThemedText>
-        </ThemedView>
       </Pressable>
     );
   }
@@ -297,7 +418,7 @@ export default function CortesScreen() {
         <TextInput
           style={[
             styles.input,
-            { color: theme.text, backgroundColor: theme.background },
+            { color: theme.text, backgroundColor: theme.backgroundElement },
             errors[field] && styles.inputError,
           ]}
           value={value}
@@ -313,12 +434,37 @@ export default function CortesScreen() {
     );
   }
 
+  const LOSS_NAMES = ['osso', 'aparas', 'carcaça', 'pé', 'miúdos'];
+
+  const pesoDistribuido = cortes.reduce((s, c) => s + (Number(c.peso) || 0), 0);
+  const perdaCortes = cortes
+    .filter((c) => LOSS_NAMES.some((name) => c.nome.toLowerCase().includes(name)))
+    .reduce((s, c) => s + (Number(c.peso) || 0), 0);
+  const pesoTotalAnimal = Number(pesoAnimal) || 0;
+  const valorTotalAnimal = parseCurrencyInput(valorAnimal) || 0;
+  const custoMedioKg = pesoTotalAnimal > 0 ? valorTotalAnimal / pesoTotalAnimal : 0;
+  const kgFaltantes = Math.max(0, pesoTotalAnimal - pesoDistribuido);
+  const perdaKg = perdaCortes + Math.max(0, kgFaltantes);
+  const perdaPct = pesoTotalAnimal > 0 ? ((perdaKg / pesoTotalAnimal) * 100).toFixed(1) : '0';
+
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
+        <View style={[styles.topBar, { paddingTop: insets.top }]}>
+          <Pressable onPress={() => router.back()} style={styles.topBackButton}>
+            <SymbolView
+              tintColor={theme.text}
+              name={{ ios: 'chevron.left', android: 'arrow_back', web: 'arrow_back' }}
+              size={24}
+            />
+          </Pressable>
+          <ThemedText style={styles.topTitle}>Cortes</ThemedText>
+          <View style={styles.topBackButton} />
+        </View>
+
         <ThemedView style={styles.header}>
-          <Pressable onPress={openNew} style={[styles.addButton, { backgroundColor: theme.text }]}>
-            <ThemedText style={[styles.addButtonText, { color: theme.background }]}>
+          <Pressable onPress={openNew} style={[styles.addButton, { backgroundColor: theme.primary }]}>
+            <ThemedText style={[styles.addButtonText, { color: '#ffffff' }]}>
               + Nova Desossa
             </ThemedText>
           </Pressable>
@@ -397,22 +543,74 @@ export default function CortesScreen() {
             )}
 
             {(step === 'cortes' || step === 'confirm') && (
-              <ScrollView
-                style={styles.modalScroll}
-                contentContainerStyle={styles.modalScrollContent}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}
-              >
-                {step === 'cortes' && tipoAnimal === 'outro' && (
-                  renderInput('Tipo de Animal *', 'animalNome', animalNome, setAnimalNome, {
-                    placeholder: 'Ex: Carneiro, Cabrito',
-                  })
+              <>
+                {step === 'cortes' && (
+                  <ThemedView style={styles.cortesFixedTop}>
+                    {renderInput('Identificação', 'animalNome', animalNome, setAnimalNome, {
+                      placeholder: 'Ex: Boi 01, Lote 5',
+                    })}
+
+                    <ThemedText type="default" themeColor="textSecondary" style={styles.cortesHint}>
+                      Informe os dados do animal inteiro:
+                    </ThemedText>
+
+                    <ThemedView style={styles.animalDataRow}>
+                      <ThemedView style={styles.animalHalfField}>
+                        {renderInput('Peso total (kg)', 'pesoAnimal', pesoAnimal, setPesoAnimal, {
+                          keyboardType: 'decimal-pad',
+                          placeholder: 'Ex: 250',
+                        })}
+                      </ThemedView>
+                      <ThemedView style={styles.animalHalfField}>
+                        {renderInput('Valor pago (R$)', 'valorAnimal', valorAnimal, (v) => setValorAnimal(formatCurrencyInput(v)), {
+                          keyboardType: 'decimal-pad',
+                          placeholder: 'Ex: 5.000',
+                        })}
+                      </ThemedView>
+                    </ThemedView>
+
+                    {pesoTotalAnimal > 0 && (
+                      <ThemedView style={styles.summaryCard}>
+                        <ThemedText style={styles.summaryTitle}>Resumo</ThemedText>
+                        <ThemedView style={styles.summaryRow}>
+                          <ThemedText type="small">Custo médio/kg</ThemedText>
+                          <ThemedText type="small" style={{ fontWeight: '700' }}>
+                            {formatCurrency(custoMedioKg)}
+                          </ThemedText>
+                        </ThemedView>
+                        <ThemedView style={styles.summaryRow}>
+                          <ThemedText type="small">Peso distribuído</ThemedText>
+                          <ThemedText type="small" style={{ fontWeight: '700' }}>
+                            {pesoDistribuido.toFixed(2)}kg
+                          </ThemedText>
+                        </ThemedView>
+                        <ThemedView style={styles.summaryRow}>
+                          <ThemedText type="small">Faltando distribuir</ThemedText>
+                          <ThemedText type="small" style={{ fontWeight: '700', color: kgFaltantes > 0 ? '#f59e0b' : '#22c55e' }}>
+                            {kgFaltantes.toFixed(2)}kg
+                          </ThemedText>
+                        </ThemedView>
+                        <ThemedView style={styles.summaryRow}>
+                          <ThemedText type="small">Perda (ossos, aparas)</ThemedText>
+                          <ThemedText type="small" style={{ fontWeight: '700', color: '#ef4444' }}>
+                            {perdaKg.toFixed(2)}kg ({perdaPct}%)
+                          </ThemedText>
+                        </ThemedView>
+                      </ThemedView>
+                    )}
+                  </ThemedView>
                 )}
 
+                <ScrollView
+                  style={styles.modalScroll}
+                  contentContainerStyle={styles.modalScrollContent}
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={false}
+                >
                 {step === 'cortes' && (
                   <>
                     <ThemedText type="default" themeColor="textSecondary" style={styles.cortesHint}>
-                      Informe o peso (kg) de cada corte obtido:
+                      Registre o peso (kg) de cada corte:
                     </ThemedText>
 
                     {cortes.map((corte, idx) => (
@@ -422,21 +620,25 @@ export default function CortesScreen() {
                       >
                         <ThemedView style={styles.corteHeader}>
                           <ThemedText type="smallBold">{corte.nome}</ThemedText>
+                          {cortes.length > 1 && (
+                            <Pressable onPress={() => removeCorte(idx)}>
+                              <ThemedText type="small" style={{ color: '#ef4444' }}>Remover</ThemedText>
+                            </Pressable>
+                          )}
                         </ThemedView>
 
                         <ThemedView style={styles.corteRow}>
-                          <ThemedView style={styles.corteHalfField}>
-                            <ThemedText type="smallBold" style={styles.fieldLabel}>Peso (kg)</ThemedText>
+                          <ThemedView style={styles.corteFullField}>
                             <TextInput
                               style={[
                                 styles.input,
-                                { color: theme.text, backgroundColor: theme.background },
+                                { color: theme.text, backgroundColor: theme.backgroundElement },
                                 errors[`${idx}_peso`] && styles.inputError,
                               ]}
                               value={corte.peso}
                               onChangeText={(v) => updateCorte(idx, 'peso', v)}
                               keyboardType="decimal-pad"
-                              placeholder="0"
+                              placeholder="Peso em kg"
                               placeholderTextColor={theme.textSecondary}
                             />
                             {errors[`${idx}_peso`] && (
@@ -445,102 +647,6 @@ export default function CortesScreen() {
                               </ThemedText>
                             )}
                           </ThemedView>
-                          <ThemedView style={styles.corteHalfField}>
-                            <ThemedText type="smallBold" style={styles.fieldLabel}>Custo (R$) *</ThemedText>
-                            <TextInput
-                              style={[
-                                styles.input,
-                                { color: theme.text, backgroundColor: theme.background },
-                                errors[`${idx}_custo`] && styles.inputError,
-                              ]}
-                              value={corte.custo}
-                              onChangeText={(v) => updateCorte(idx, 'custo', v)}
-                              keyboardType="decimal-pad"
-                              placeholder="Ex: 25"
-                              placeholderTextColor={theme.textSecondary}
-                            />
-                            {errors[`${idx}_custo`] && (
-                              <ThemedText type="small" style={{ color: '#ef4444' }}>
-                                {errors[`${idx}_custo`]}
-                              </ThemedText>
-                            )}
-                          </ThemedView>
-                        </ThemedView>
-
-                        <ThemedView style={styles.corteRow}>
-                          <ThemedView style={styles.corteHalfField}>
-                            <ThemedText type="smallBold" style={styles.fieldLabel}>Margem (%) *</ThemedText>
-                            <TextInput
-                              style={[
-                                styles.input,
-                                { color: theme.text, backgroundColor: theme.background },
-                                errors[`${idx}_margemLucro`] && styles.inputError,
-                              ]}
-                              value={corte.margemLucro}
-                              onChangeText={(v) => updateCorte(idx, 'margemLucro', v)}
-                              keyboardType="decimal-pad"
-                              placeholder="Ex: 30"
-                              placeholderTextColor={theme.textSecondary}
-                            />
-                            {errors[`${idx}_margemLucro`] && (
-                              <ThemedText type="small" style={{ color: '#ef4444' }}>
-                                {errors[`${idx}_margemLucro`]}
-                              </ThemedText>
-                            )}
-                          </ThemedView>
-                          <ThemedView style={styles.corteHalfField}>
-                            <ThemedText type="smallBold" style={styles.fieldLabel}>Quebra (%)</ThemedText>
-                            <TextInput
-                              style={[
-                                styles.input,
-                                { color: theme.text, backgroundColor: theme.background },
-                              ]}
-                              value={corte.quebra}
-                              onChangeText={(v) => updateCorte(idx, 'quebra', v)}
-                              keyboardType="decimal-pad"
-                              placeholder="Ex: 5"
-                              placeholderTextColor={theme.textSecondary}
-                            />
-                          </ThemedView>
-                        </ThemedView>
-
-                        <ThemedView style={styles.fieldGroup}>
-                          <ThemedText type="smallBold" style={styles.fieldLabel}>Preço de Venda (R$)</ThemedText>
-                          <ThemedView
-                            style={[
-                              styles.input,
-                              {
-                                backgroundColor: theme.backgroundElement,
-                                justifyContent: 'center',
-                                borderWidth: 0,
-                              },
-                            ]}
-                          >
-                            <ThemedText type="default" style={{ fontWeight: '600' }}>
-                              {formatCurrency(calcPrecoCorte(corte))}
-                            </ThemedText>
-                          </ThemedView>
-                        </ThemedView>
-
-                        <ThemedView style={styles.fieldGroup}>
-                          <ThemedText type="smallBold" style={styles.fieldLabel}>Validade</ThemedText>
-                          <TextInput
-                            style={[
-                              styles.input,
-                              { color: theme.text, backgroundColor: theme.background },
-                            ]}
-                            value={corte.dataValidade}
-                            onChangeText={(v) => {
-                              const digits = v.replace(/\D/g, '').slice(0, 8);
-                              const parts: string[] = [];
-                              if (digits.length > 0) parts.push(digits.slice(0, 2));
-                              if (digits.length > 2) parts.push(digits.slice(2, 4));
-                              if (digits.length > 4) parts.push(digits.slice(4, 8));
-                              updateCorte(idx, 'dataValidade', parts.join('/'));
-                            }}
-                            placeholder="DD/MM/AAAA"
-                            placeholderTextColor={theme.textSecondary}
-                          />
                         </ThemedView>
                       </ThemedView>
                     ))}
@@ -554,32 +660,13 @@ export default function CortesScreen() {
                       </ThemedText>
                     </Pressable>
 
-                    {cortes.length > 0 && (() => {
-                      const totalPeso = cortes.reduce((s, c) => s + (Number(c.peso) || 0), 0);
-                      const totalCusto = cortes.reduce((s, c) => s + (Number(c.custo) || 0), 0);
-                      const totalVenda = cortes.reduce((s, c) => s + calcPrecoCorte(c), 0);
-                      const totalGanho = totalVenda - totalCusto;
-                      return (
-                        <ThemedView style={styles.somaRow}>
-                          <ThemedText type="default" style={{ fontWeight: '700' }}>
-                            {totalPeso.toFixed(2)}kg
-                          </ThemedText>
-                          <ThemedText type="default" style={{ fontWeight: '700' }}>
-                            Custo: {formatCurrency(totalCusto)}
-                          </ThemedText>
-                          <ThemedText type="default" style={{ fontWeight: '700' }}>
-                            Venda: {formatCurrency(totalVenda)}
-                          </ThemedText>
-                          <ThemedText type="default" style={{ fontWeight: '700', color: '#22c55e' }}>
-                            Lucro Previsto: {formatCurrency(totalGanho)}
-                          </ThemedText>
-                        </ThemedView>
-                      );
-                    })()}
-
-                    <Pressable onPress={goToConfirm} style={[styles.primaryButton, { backgroundColor: theme.text }]}>
-                      <ThemedText style={[styles.primaryButtonText, { color: theme.background }]}>
-                        Revisar Desossa
+                    <Pressable
+                      onPress={editingId ? handleSave : goToConfirm}
+                      disabled={saving}
+                      style={[styles.primaryButton, { backgroundColor: theme.primary, opacity: saving ? 0.5 : 1 }]}
+                    >
+                      <ThemedText style={[styles.primaryButtonText, { color: '#ffffff' }]}>
+                        {saving ? 'Salvando...' : editingId ? 'Salvar Edição' : 'Revisar Desossa'}
                       </ThemedText>
                     </Pressable>
                   </>
@@ -592,26 +679,34 @@ export default function CortesScreen() {
                     </ThemedText>
 
                     {(() => {
-                      const totalPeso = cortes.reduce((s, c) => s + (Number(c.peso) || 0), 0);
-                      const totalCusto = cortes.reduce((s, c) => s + (Number(c.custo) || 0), 0);
-                      const totalVenda = cortes.reduce((s, c) => s + calcPrecoCorte(c), 0);
-                      const totalGanho = totalVenda - totalCusto;
+                      const custoMedio = pesoTotalAnimal > 0 ? valorTotalAnimal / pesoTotalAnimal : 0;
+                      const confPesoVenda = cortes
+                        .filter((c) => !LOSS_NAMES.some((name) => c.nome.toLowerCase().includes(name)))
+                        .reduce((s, c) => s + (Number(c.peso) || 0), 0);
+                      const confPerdaCortes = cortes
+                        .filter((c) => LOSS_NAMES.some((name) => c.nome.toLowerCase().includes(name)))
+                        .reduce((s, c) => s + (Number(c.peso) || 0), 0);
                       return (
                         <ThemedView style={styles.confirmCard}>
                           <ThemedText type="smallBold">{tipoLabel(tipoAnimal)}</ThemedText>
                           <ThemedText type="default">{animalNome || 'Sem identificação'}</ThemedText>
                           <ThemedView style={styles.totaisRow}>
                             <ThemedText type="default" style={{ fontWeight: '700' }}>
-                              {totalPeso.toFixed(2)}kg
+                              {pesoTotalAnimal}kg
                             </ThemedText>
                             <ThemedText type="default">
-                              Custo: {formatCurrency(totalCusto)}
+                              Valor: {formatCurrency(valorTotalAnimal)}
                             </ThemedText>
                             <ThemedText type="default">
-                              Venda: {formatCurrency(totalVenda)}
+                              Custo médio: {formatCurrency(custoMedio)}/kg
                             </ThemedText>
-                            <ThemedText type="default" style={{ fontWeight: '700', color: '#22c55e' }}>
-                              Lucro Previsto: {formatCurrency(totalGanho)}
+                          </ThemedView>
+                          <ThemedView style={styles.totaisRow}>
+                            <ThemedText type="small" themeColor="textSecondary">
+                              Carne: {confPesoVenda.toFixed(2)}kg
+                            </ThemedText>
+                            <ThemedText type="small" themeColor="textSecondary">
+                              Perda: {perdaKg.toFixed(2)}kg ({perdaPct}%)
                             </ThemedText>
                           </ThemedView>
                         </ThemedView>
@@ -630,27 +725,25 @@ export default function CortesScreen() {
                             <ThemedText type="small" themeColor="textSecondary">
                               {corte.peso}kg
                             </ThemedText>
-                            <ThemedText type="small" themeColor="textSecondary">
-                              Custo: {formatCurrency(Number(corte.custo))}
-                            </ThemedText>
-                            <ThemedText type="small" themeColor="textSecondary">
-                              Venda: {formatCurrency(calcPrecoCorte(corte))}
-                            </ThemedText>
-                            <ThemedText type="small" themeColor="textSecondary">
-                              {corte.dataValidade || '—'}
-                            </ThemedText>
                           </ThemedView>
                         </ThemedView>
                       ))}
 
-                    <Pressable onPress={handleSave} style={[styles.primaryButton, { backgroundColor: theme.text }]}>
-                      <ThemedText style={[styles.primaryButtonText, { color: theme.background }]}>
-                        Finalizar Desossa
-                      </ThemedText>
-                    </Pressable>
+                    <ThemedView style={styles.confirmButtons}>
+                      <Pressable
+                        onPress={handleSave}
+                        disabled={saving}
+                        style={[styles.primaryButton, { backgroundColor: theme.primary, opacity: saving ? 0.5 : 1 }]}
+                      >
+                        <ThemedText style={[styles.primaryButtonText, { color: '#ffffff' }]}>
+                          {saving ? 'Salvando...' : 'Finalizar Desossa'}
+                        </ThemedText>
+                      </Pressable>
+                    </ThemedView>
                   </>
                 )}
               </ScrollView>
+            </>
             )}
           </SafeAreaView>
         </KeyboardAvoidingView>
@@ -660,9 +753,7 @@ export default function CortesScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1 },
   safeArea: {
     flex: 1,
     paddingHorizontal: Spacing.four,
@@ -670,186 +761,147 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     width: '100%',
   },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.three,
+    paddingBottom: Spacing.two,
+  },
+  topBackButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  topTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: Spacing.three,
+    marginBottom: Spacing.three,
   },
   addButton: {
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    borderRadius: Spacing.two,
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
   },
   addButtonText: {
-    fontWeight: '600',
-    fontSize: 14,
+    fontSize: 16,
+    fontWeight: '700',
   },
   emptyState: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.three,
-    paddingHorizontal: Spacing.four,
   },
-  emptyEmoji: {
-    fontSize: 48,
-  },
-  emptyTitle: {
-    textAlign: 'center',
-  },
-  emptyText: {
-    textAlign: 'center',
-  },
+  emptyEmoji: { fontSize: 48 },
+  emptyTitle: { textAlign: 'center' },
+  emptyText: { textAlign: 'center' },
   listContent: {
     gap: Spacing.three,
-    paddingBottom: Spacing.six,
+    paddingBottom: 100,
   },
   card: {
-    borderRadius: Spacing.three,
-    padding: Spacing.two,
-    gap: Spacing.one,
+    padding: Spacing.three,
+    borderRadius: 14,
+    gap: Spacing.two,
     borderWidth: 1,
-    borderColor: 'rgba(128,128,128,0.15)',
+    borderColor: 'rgba(128,128,128,0.12)',
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
   },
-  cardTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-  },
+  cardTitle: { fontSize: 20, lineHeight: 24 },
   cardMeta: {
     alignItems: 'flex-end',
     gap: Spacing.half,
   },
   cardPeso: {
-    fontSize: 16,
+    fontSize: 20,
     fontWeight: '700',
+    lineHeight: 24,
   },
-  cardItems: {
-    gap: Spacing.half,
-    paddingTop: Spacing.one,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(128,128,128,0.2)',
-  },
-  cardItemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  cardItemNome: {
-    flex: 1,
-    fontSize: 14,
-  },
-  cardItemPeso: {
-    width: 60,
-    textAlign: 'right',
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  cardItemCusto: {
-    width: 80,
-    textAlign: 'right',
-    fontSize: 13,
-  },
-  cardFooter: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(128,128,128,0.2)',
-    paddingTop: Spacing.two,
-  },
-  // Modal
-  modalContainer: {
-    flex: 1,
-  },
-  modalSafe: {
-    flex: 1,
-  },
+  modalContainer: { flex: 1 },
+  modalSafe: { flex: 1 },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: Spacing.four,
     paddingVertical: Spacing.three,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(128,128,128,0.1)',
   },
-  modalTitle: {
-    fontSize: 22,
-    lineHeight: 28,
-    textAlign: 'center',
-    flex: 1,
-  },
-  stepContainer: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.three,
-  },
-  stepHint: {
-    marginBottom: Spacing.one,
-  },
+  modalTitle: { fontSize: 20, fontWeight: '700' },
+  stepContainer: { paddingHorizontal: Spacing.four, gap: Spacing.three, paddingTop: Spacing.four },
+  stepHint: { textAlign: 'center', marginBottom: Spacing.half, fontSize: 14 },
   tipoCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.two,
-    padding: Spacing.three,
-    borderRadius: Spacing.three,
-    borderWidth: 1,
-    borderColor: 'rgba(128,128,128,0.15)',
-  },
-  tipoEmoji: {
-    fontSize: 36,
-  },
-  // Dados step
-  modalScroll: {
-    flex: 1,
-  },
-  modalScrollContent: {
-    paddingHorizontal: Spacing.four,
-    paddingBottom: Spacing.six,
     gap: Spacing.three,
+    padding: Spacing.four,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(128,128,128,0.12)',
   },
-  fieldGroup: {
+  tipoEmoji: { fontSize: 32 },
+  cortesFixedTop: {
+    paddingHorizontal: Spacing.four,
+    paddingBottom: Spacing.two,
     gap: Spacing.one,
   },
-  fieldLabel: {
-    letterSpacing: 0.5,
-    fontSize: 12,
-  },
+  modalScroll: { flex: 1 },
+  modalScrollContent: { paddingHorizontal: Spacing.four, gap: Spacing.three, paddingBottom: Spacing.six },
+  fieldGroup: { gap: Spacing.half },
+  fieldLabel: { fontSize: 12, fontWeight: '700', letterSpacing: 0.3 },
   input: {
     borderWidth: 1,
     borderColor: 'transparent',
-    borderRadius: Spacing.two,
+    borderRadius: 10,
     paddingHorizontal: Spacing.three,
-    paddingVertical: Platform.OS === 'ios' ? Spacing.three : Spacing.two,
+    paddingVertical: Platform.OS === 'ios' ? 12 : 10,
     fontSize: 16,
   },
-  inputError: {
-    borderColor: '#ef4444',
+  inputError: { borderColor: '#ef4444' },
+  cortesHint: { marginBottom: 2, fontSize: 14 },
+  animalDataRow: {
+    flexDirection: 'row',
+    gap: Spacing.three,
   },
-  primaryButton: {
+  animalHalfField: {
+    flex: 1,
+  },
+  summaryCard: {
+    paddingVertical: Spacing.two,
+    gap: Spacing.one,
+  },
+  summaryTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    marginBottom: Spacing.half,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: Spacing.three,
-    borderRadius: Spacing.two,
-    marginTop: Spacing.two,
-  },
-  primaryButtonText: {
-    fontWeight: '600',
-    fontSize: 16,
-  },
-  // Dados resumo
-  // Cortes step
-  cortesHint: {
-    marginBottom: Spacing.one,
+    paddingVertical: 2,
   },
   corteCard: {
-    padding: Spacing.two,
-    borderRadius: Spacing.three,
-    gap: Spacing.one,
+    padding: Spacing.three,
+    borderRadius: 12,
+    gap: Spacing.two,
     borderWidth: 1,
-    borderColor: 'rgba(128,128,128,0.15)',
+    borderColor: 'rgba(128,128,128,0.12)',
   },
   corteHeader: {
     flexDirection: 'row',
@@ -858,56 +910,61 @@ const styles = StyleSheet.create({
   },
   corteRow: {
     flexDirection: 'row',
-    gap: Spacing.three,
-    alignItems: 'flex-start',
+    gap: Spacing.two,
   },
-  corteHalfField: {
-    flex: 1,
-  },
+  corteHalfField: { flex: 1 },
+  corteFullField: { flex: 1 },
   addCorteButton: {
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: 'rgba(128,128,128,0.3)',
+    borderRadius: 10,
+    padding: Spacing.three,
+    alignItems: 'center',
+  },
+  addCorteText: { fontWeight: '600', opacity: 0.7 },
+  somaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: Spacing.one,
+    paddingVertical: Spacing.two,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(128,128,128,0.2)',
+  },
+  primaryButton: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: Spacing.three,
-    borderRadius: Spacing.two,
-    borderWidth: 1.5,
-    borderStyle: 'dashed',
+    paddingVertical: 14,
+    borderRadius: 10,
+    marginTop: Spacing.two,
   },
-  addCorteText: {
-    fontWeight: '600',
-    fontSize: 15,
-  },
-  somaRow: {
-    gap: Spacing.half,
-    padding: Spacing.two,
-    borderRadius: Spacing.two,
-    borderWidth: 1,
-    borderColor: 'rgba(128,128,128,0.2)',
-  },
-  // Confirm step
-  confirmSubtitle: {
-    textAlign: 'center',
-    marginBottom: Spacing.one,
-  },
+  primaryButtonText: { fontWeight: '700', fontSize: 16 },
+  confirmSubtitle: { textAlign: 'center', marginBottom: Spacing.two, fontSize: 14 },
   confirmCard: {
-    padding: Spacing.two,
-    borderRadius: Spacing.three,
-    gap: Spacing.half,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(128,128,128,0.2)',
+    borderColor: 'rgba(128,128,128,0.12)',
+    padding: Spacing.three,
+    gap: Spacing.two,
+  },
+  totaisRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: Spacing.one,
   },
   confirmItem: {
-    padding: Spacing.two,
-    borderRadius: Spacing.three,
-    gap: Spacing.half,
-    borderWidth: 1,
-    borderColor: 'rgba(128,128,128,0.15)',
+    paddingVertical: Spacing.two,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(128,128,128,0.1)',
   },
   confirmItemRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    gap: Spacing.three,
+    marginTop: Spacing.half,
   },
-  totaisRow: {
-    gap: Spacing.half,
-    marginTop: Spacing.one,
+  confirmButtons: {
+    marginTop: Spacing.three,
   },
 });

@@ -24,6 +24,8 @@ export const Collections = {
   desossas: 'desossas',
   expenses: 'expenses',
   fiscalDocuments: 'fiscalDocuments',
+  lotes: 'lotes',
+  loteMovimentos: 'loteMovimentos',
 } as const
 
 export type CollectionName = (typeof Collections)[keyof typeof Collections]

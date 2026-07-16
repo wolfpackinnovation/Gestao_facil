@@ -1,6 +1,5 @@
-import { createWithId, getAll, get, remove, where } from './db'
+import { createWithId, getAll, get, update, remove, where } from './db'
 import { Collections } from './collections'
-import { saveProduto, type Produto, type UnidadeMedida } from './estoque-storage'
 
 export interface CortePadrao {
   nome: string
@@ -126,36 +125,8 @@ export async function createDesossa(
   const desossaItems: DesossaItem[] = []
   const now = new Date().toISOString()
 
-  const tipoLabel: Record<string, string> = {
-    boi: 'Bovino',
-    porco: 'Suíno',
-    frango: 'Frango',
-  }
-  const categoria = tipoLabel[tipoAnimal] ?? 'Carnes'
-
   for (const item of items) {
     if (item.peso <= 0) continue
-
-    const produtoId = generateId()
-    const codeSuffix = Date.now().toString(36).slice(-4).toUpperCase()
-
-    const produto: Produto = {
-      id: produtoId,
-      companyId,
-      codigo: `${tipoAnimal.toUpperCase().slice(0, 3)}-${codeSuffix}`,
-      nome: item.nome,
-      categoria,
-      unidade: 'kg' as UnidadeMedida,
-      quantidade: item.peso,
-      custo: item.custo,
-      precoVenda: item.precoVenda,
-      estoqueAtual: item.peso,
-      estoqueMinimo: 0,
-      dataValidade: item.dataValidade,
-      fornecedor: '',
-      createdAt: now,
-    }
-    await saveProduto(produto)
 
     desossaItems.push({
       nome: item.nome,
@@ -163,7 +134,7 @@ export async function createDesossa(
       custo: item.custo,
       precoVenda: item.precoVenda,
       dataValidade: item.dataValidade,
-      produtoId,
+      produtoId: '',
     })
   }
 
@@ -178,6 +149,20 @@ export async function createDesossa(
   })
 
   return id
+}
+
+export async function updateDesossa(
+  id: string,
+  data: {
+    animalNome?: string
+    pesoTotal?: number
+    custoTotal?: number
+    items?: { nome: string; peso: number; custo: number; precoVenda: number; dataValidade: string }[]
+  }
+): Promise<void> {
+  try {
+    await update<any>(Collections.desossas, id, data)
+  } catch {}
 }
 
 export async function deleteDesossa(id: string): Promise<void> {

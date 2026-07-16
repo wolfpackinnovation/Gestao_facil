@@ -104,7 +104,7 @@ export default function HomeScreen() {
     setWeekTotals(weekTotalsArr);
 
     const lowStock = allProducts.filter(
-      (p) => p.estoqueMinimo > 0 && p.estoqueAtual <= p.estoqueMinimo
+      (p) => p.estoqueMinimo > 0 && (p.estoqueAtual ?? 0) <= p.estoqueMinimo
     );
 
     setTodaySales(todayData);

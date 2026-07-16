@@ -317,7 +317,7 @@ const styles = StyleSheet.create({
   paymentValue: { fontSize: 18, fontWeight: '700' },
 
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing.three },
-  emptyEmoji: { fontSize: 48 },
+  emptyEmoji: { fontSize: 48, lineHeight: 56 },
   emptyTitle: { textAlign: 'center' },
   list: { flex: 1 },
   listContent: { gap: Spacing.three, paddingBottom: BottomTabInset + Spacing.five },

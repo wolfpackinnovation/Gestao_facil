@@ -1,5 +1,6 @@
-import { Colors } from '@/constants/theme';
+import { useThemeContext } from '@/contexts/theme';
 
 export function useTheme() {
-  return Colors;
+  const { colors } = useThemeContext();
+  return colors;
 }

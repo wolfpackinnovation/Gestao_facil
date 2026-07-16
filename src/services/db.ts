@@ -56,8 +56,11 @@ function getConverter<T extends BaseEntity>(): FirestoreDataConverter<T> {
   return {
     toFirestore(entity: WithFieldValue<T>): DocumentData {
       const { id, ...data } = entity as any
+      const cleanData = Object.fromEntries(
+        Object.entries(data).filter(([_, v]) => v !== undefined)
+      )
       return {
-        ...data,
+        ...cleanData,
         updatedAt: Timestamp.now(),
         createdAt: data.createdAt ?? Timestamp.now(),
       }

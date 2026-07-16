@@ -22,7 +22,8 @@ import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/contexts/auth';
 import * as SaleService from '@/services/sale-service';
 import * as ClientService from '@/services/client-service';
-import { getProdutos, saveProduto, type Produto } from '@/services/estoque-storage';
+import { getProdutos, type Produto } from '@/services/estoque-storage';
+import { consumirEstoqueFEFO, reverterConsumo, type ConsumoFEFO } from '@/services/lote-service';
 import type { Client } from '@/types/schema';
 
 function formatCurrency(value: number): string {
@@ -40,6 +41,7 @@ interface CartItem {
   quantity: number
   unitPrice: number
   subtotal: number
+  consumos?: ConsumoFEFO[]
 }
 
 export default function NovaVendaScreen() {
@@ -79,8 +81,9 @@ export default function NovaVendaScreen() {
     if (!quantityModalProduct) return;
     const qty = parseFloat(quantityInput.replace(',', '.'));
     if (isNaN(qty) || qty <= 0) return;
-    if (qty > quantityModalProduct.estoqueAtual) {
-      Alert.alert('Estoque insuficiente', `Disponível: ${quantityModalProduct.estoqueAtual} ${quantityModalProduct.unidade}`);
+    const estoqueDisp = quantityModalProduct.estoqueAtual ?? 0;
+    if (qty > estoqueDisp) {
+      Alert.alert('Estoque insuficiente', `Disponível: ${estoqueDisp} ${quantityModalProduct.unidade}`);
       return;
     }
     addProductToCart(quantityModalProduct, qty);
@@ -104,8 +107,9 @@ export default function NovaVendaScreen() {
     const existing = cart.find((c) => c.productId === product.id);
     const currentQty = existing ? existing.quantity : 0;
     const totalQty = currentQty + qty;
-    if (totalQty > product.estoqueAtual) {
-      Alert.alert('Estoque insuficiente', `Disponível: ${product.estoqueAtual} ${product.unidade}`);
+    const estoqueDisp = product.estoqueAtual ?? 0;
+    if (totalQty > estoqueDisp) {
+      Alert.alert('Estoque insuficiente', `Disponível: ${estoqueDisp} ${product.unidade}`);
       return;
     }
     if (existing) {
@@ -138,8 +142,8 @@ export default function NovaVendaScreen() {
       return;
     }
     const product = products.find((p) => p.id === productId);
-    if (product && qty > product.estoqueAtual) {
-      Alert.alert('Estoque insuficiente', `Disponível: ${product.estoqueAtual} ${product.unidade}`);
+    if (product && qty > (product.estoqueAtual ?? 0)) {
+      Alert.alert('Estoque insuficiente', `Disponível: ${product.estoqueAtual ?? 0} ${product.unidade}`);
       return;
     }
     setCart((prev) =>
@@ -169,7 +173,19 @@ export default function NovaVendaScreen() {
       return;
     }
 
-    const saleData: Record<string, any> = {
+    for (const item of cart) {
+      const product = products.find((p) => p.id === item.productId);
+      if (!product) continue;
+      if ((product.estoqueAtual ?? 0) < item.quantity) {
+        Alert.alert(
+          'Estoque insuficiente',
+          `${product.nome}: disponível ${product.estoqueAtual ?? 0} ${product.unidade}`
+        );
+        return;
+      }
+    }
+
+    const saleData: any = {
       companyId,
       number: generateSaleNumber(),
       totalAmount: totalComDesconto,
@@ -191,17 +207,33 @@ export default function NovaVendaScreen() {
     try {
       const saleId = await SaleService.createSaleWithItems(saleData, items);
 
+      const consumosPorProduto: Record<string, ConsumoFEFO[]> = {}
+      let erroEstoque = false
       for (const item of cart) {
-        const product = products.find((p) => p.id === item.productId);
-        if (product) {
-          await saveProduto({
-            ...product,
-            estoqueAtual: product.estoqueAtual - item.quantity,
-          });
+        const result = await consumirEstoqueFEFO(item.productId, item.quantity, {
+          referenciaTipo: 'venda',
+          referenciaId: saleId,
+          tipo: 'venda',
+          motivo: `Venda ${saleData.number}`,
+          userId: companyId,
+        });
+        if (!result.sucesso) {
+          Alert.alert('Erro de estoque', result.mensagem ?? 'Estoque insuficiente')
+          erroEstoque = true
+          for (const pid of Object.keys(consumosPorProduto)) {
+            await reverterConsumo(pid, consumosPorProduto[pid], {
+              tipo: 'entrada',
+              motivo: 'Estorno por erro',
+            });
+          }
+          break
         }
+        consumosPorProduto[item.productId] = result.consumido
       }
 
-      Alert.alert('Venda registrada', `Venda ${saleData.number} concluída com sucesso!`);
+      if (!erroEstoque) {
+        Alert.alert('Venda registrada', `Venda ${saleData.number} concluída com sucesso!`);
+      }
     } catch (e: any) {
       Alert.alert('Erro', e?.message ?? 'Erro ao registrar venda.');
     }

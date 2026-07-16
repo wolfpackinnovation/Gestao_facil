@@ -10,15 +10,19 @@ import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/contexts/auth';
 
-const SIDEBAR_WIDTH = Dimensions.get('window').width * 0.7;
+const SIDEBAR_WIDTH = Dimensions.get('window').width * 0.75;
 
-const sidebarItems = [
-  { icon: { ios: 'house', android: 'home' }, label: 'Início', route: '/' },
-  { icon: { ios: 'cow', android: 'cow' }, label: 'Cortes', route: '/cortes' },
-  { icon: { ios: 'chart.bar.fill', android: 'bar_chart' }, label: 'Relatórios', route: '/relatorios' },
-  { icon: { ios: 'dollarsign.circle', android: 'payments' }, label: 'Pagamentos', route: '/pagamentos' },
-  { icon: { ios: 'doc.text', android: 'description' }, label: 'Arquivos Fiscais', route: '/arquivos-fiscais' },
-  { icon: { ios: 'gearshape', android: 'settings' }, label: 'Configuração', route: '/configuracao' },
+const mainItems = [
+  { emoji: '🏠', label: 'Início', route: '/' },
+  { emoji: '🥩', label: 'Cortes', route: '/cortes' },
+  { emoji: '📊', label: 'Relatórios', route: '/relatorios' },
+  { emoji: '💰', label: 'Pagamentos', route: '/pagamentos' },
+  { emoji: '📄', label: 'Arquivos fiscais', route: '/arquivos-fiscais' },
+];
+
+const accountItems = [
+  { emoji: '👑', label: 'Assinatura', route: '/assinatura' },
+  { emoji: '⚙️', label: 'Configurações', route: '/configuracao' },
 ];
 
 type SidebarProps = {
@@ -30,10 +34,12 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
   const colors = useTheme();
   const router = useRouter();
   const pathname = usePathname();
-  const { user, logout } = useAuth();
+  const { logout } = useAuth();
+
+  const tabRoutes = ['/', '/estoque', '/vendas', '/financeiro', '/clientes'];
 
   const isActive = (route: string) => {
-    if (route === '/') return pathname === '/';
+    if (route === '/') return tabRoutes.includes(pathname);
     return pathname.startsWith(route);
   };
 
@@ -59,8 +65,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
       </View>
 
-      <View
-        style={[styles.drawer, { backgroundColor: colors.background }]}>
+      <View style={[styles.drawer, { backgroundColor: colors.background }]}>
         <ThemedView style={styles.drawerHeader}>
           <View style={styles.drawerTitleRow}>
             <Image source={require('@/assets/icon.png')} style={styles.drawerIcon} />
@@ -77,29 +82,10 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
           </Pressable>
         </ThemedView>
 
-        <Pressable
-          style={styles.profileSection}
-          onPress={() => {
-            onClose();
-            router.navigate('/perfil');
-          }}>
-          <ThemedView type="backgroundSelected" style={styles.avatar}>
-            <ThemedText type="title">
-              {user?.displayName
-                ? user.displayName.charAt(0).toUpperCase()
-                : user?.email?.charAt(0).toUpperCase() ?? '?'}
-            </ThemedText>
-          </ThemedView>
-          <ThemedText type="smallBold">
-            {user?.displayName ?? 'Usuário'}
-          </ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
-            {user?.email ?? ''}
-          </ThemedText>
-        </Pressable>
-
         <ThemedView style={styles.navSection}>
-          {sidebarItems.map((item) => {
+          <ThemedText style={styles.sectionLabel}>GERAL</ThemedText>
+
+          {mainItems.map((item) => {
             const active = isActive(item.route);
             return (
               <Pressable
@@ -113,32 +99,57 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
                   onClose();
                   router.navigate(item.route as any);
                 }}>
-                <SymbolView
-                  tintColor={active ? '#ffffff' : colors.text}
-                  name={{ ios: item.icon.ios as any, android: item.icon.android, web: 'link' }}
-                  size={22}
-                  weight={active ? 'bold' : 'regular'}
-                />
+                <ThemedText style={[styles.navEmoji, active && { color: '#ffffff' }]}>
+                  {item.emoji}
+                </ThemedText>
                 <ThemedText
                   type="default"
-                  style={active && { color: '#ffffff' }}>
+                  style={[styles.navLabel, active && { color: '#ffffff' }]}>
                   {item.label}
                 </ThemedText>
               </Pressable>
             );
           })}
+
+          <View style={styles.separator} />
+
+          <ThemedText style={styles.sectionLabel}>CONTA</ThemedText>
+
+          {accountItems.map((item) => {
+            const active = isActive(item.route);
+            return (
+              <Pressable
+                key={item.route}
+                style={({ pressed }) => [
+                  styles.navItem,
+                  active && { backgroundColor: colors.primary },
+                  pressed && !active && { opacity: 0.7 },
+                ]}
+                onPress={() => {
+                  onClose();
+                  router.navigate(item.route as any);
+                }}>
+                <ThemedText style={[styles.navEmoji, active && { color: '#ffffff' }]}>
+                  {item.emoji}
+                </ThemedText>
+                <ThemedText
+                  type="default"
+                  style={[styles.navLabel, active && { color: '#ffffff' }]}>
+                  {item.label}
+                </ThemedText>
+              </Pressable>
+            );
+          })}
+
+          <View style={styles.separator} />
         </ThemedView>
 
         <ThemedView style={styles.footerSection}>
           <Pressable
             style={({ pressed }) => [styles.navItem, pressed && { opacity: 0.7 }]}
             onPress={handleLogout}>
-            <SymbolView
-              tintColor="#DC2626"
-              name={{ ios: 'arrow.right.square', android: 'logout', web: 'logout' }}
-              size={22}
-            />
-            <ThemedText type="default" style={{ color: '#DC2626' }}>
+            <ThemedText style={styles.navEmoji}>🚪</ThemedText>
+            <ThemedText type="default" style={[styles.navLabel, { color: '#DC2626' }]}>
               Sair
             </ThemedText>
           </Pressable>
@@ -159,7 +170,7 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     width: SIDEBAR_WIDTH,
-    paddingTop: Spacing.six,
+    paddingTop: 54,
     zIndex: 101,
   },
   drawerHeader: {
@@ -167,56 +178,62 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: Spacing.four,
-    paddingBottom: Spacing.three,
+    paddingBottom: Spacing.four,
   },
   drawerTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.two,
+    gap: Spacing.three,
   },
   drawerIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
+    width: 36,
+    height: 36,
+    borderRadius: 10,
   },
   drawerTitle: {
     fontSize: 22,
   },
-  profileSection: {
-    alignItems: 'center',
-    gap: Spacing.one,
-    paddingVertical: Spacing.three,
-    paddingHorizontal: Spacing.four,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(128,128,128,0.2)',
-    marginBottom: Spacing.two,
-  },
-  avatar: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.one,
-  },
   navSection: {
-    gap: Spacing.half,
-    paddingHorizontal: Spacing.two,
+    gap: 2,
+    paddingHorizontal: 12,
     flex: 1,
+    paddingTop: Spacing.one,
   },
   navItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.three,
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.two,
-    borderRadius: Spacing.two,
+    gap: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+  },
+  navEmoji: {
+    fontSize: 20,
+    width: 28,
+    textAlign: 'center',
+  },
+  navLabel: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  separator: {
+    height: 1,
+    backgroundColor: 'rgba(128,128,128,0.15)',
+    marginVertical: 8,
+    marginHorizontal: 8,
+  },
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.8,
+    color: '#9CA3AF',
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 4,
   },
   footerSection: {
-    paddingHorizontal: Spacing.two,
-    paddingBottom: Spacing.four,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(128,128,128,0.2)',
-    paddingTop: Spacing.two,
+    paddingHorizontal: 12,
+    paddingBottom: 32,
+    paddingTop: 4,
   },
 });

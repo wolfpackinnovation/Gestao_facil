@@ -203,3 +203,34 @@ export interface Inventory extends BaseEntity {
   expiryDate: string
   supplier: string
 }
+
+export interface Lote extends BaseEntity {
+  companyId: string
+  productId: string
+  codigo: string
+  quantidadeInicial: number
+  quantidadeAtual: number
+  custoUnitario: number
+  dataValidade: string
+  dataEntrada: string
+  fornecedor: string
+  observacao?: string
+  ativo: boolean
+  origem?: string
+}
+
+export type LoteMovimentoTipo = 'entrada' | 'saida' | 'venda' | 'ajuste' | 'perda'
+
+export interface LoteMovimento extends BaseEntity {
+  companyId: string
+  productId: string
+  loteId: string
+  tipo: LoteMovimentoTipo
+  quantidade: number
+  custoUnitario?: number
+  dataValidadeSnapshot?: string
+  motivo?: string
+  userId?: string
+  referenciaTipo?: string
+  referenciaId?: string
+}

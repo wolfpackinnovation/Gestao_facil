@@ -4,13 +4,14 @@ import * as SplashScreen from 'expo-splash-screen';
 import { View, StyleSheet } from 'react-native';
 
 import { AuthProvider } from '@/contexts/auth';
+import { ThemeProvider as AppThemeProvider } from '@/contexts/theme';
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import Header from '@/components/header';
 import Sidebar from '@/components/sidebar';
 
 SplashScreen.preventAutoHideAsync();
 
-const hideHeaderRoutes = new Set(['/login', '/signup', '/notificacao', '/perfil', '/produto-detalhe', '/cliente-detalhe', '/nova-venda', '/financeiro-detalhe', '/adicionar-documento-fiscal', '/escanear-qr-fiscal'])
+const hideHeaderRoutes = new Set(['/login', '/signup', '/perfil', '/produto-detalhe', '/cliente-detalhe', '/nova-venda', '/financeiro-detalhe', '/adicionar-documento-fiscal', '/escanear-qr-fiscal', '/desossa-detalhe', '/termos-de-uso', '/politica-privacidade', '/sobre-o-app', '/assinatura-info', '/cortes'])
 
 const routeTitles: Record<string, string> = {
   'index': 'GestFacil',
@@ -23,6 +24,12 @@ const routeTitles: Record<string, string> = {
   'cortes': 'Cortes',
   'relatorios': 'Relatórios',
   'arquivos-fiscais': 'Arquivos Fiscais',
+  'assinatura': 'Assinatura',
+  'assinatura-info': 'Assinatura',
+  'sobre-o-app': 'Sobre o App',
+  'termos-de-uso': 'Termos de Uso',
+  'desossa-detalhe': 'Detalhes da Desossa',
+  'politica-privacidade': 'Política de Privacidade',
   'pagamentos': 'Pagamentos',
   'nova-venda': 'Nova Venda',
   'mais': 'Mais',
@@ -41,14 +48,16 @@ function RootLayoutInner() {
 
   return (
     <ThemeProvider value={DefaultTheme}>
-      <AnimatedSplashOverlay />
-      <View style={styles.root}>
-        {!hideHeaderRoutes.has(pathname) && <Header onMenuPress={() => setSidebarOpen(true)} title={getRouteTitle(pathname)} />}
-        <View style={styles.content}>
-          <Slot />
+      <AppThemeProvider>
+        <AnimatedSplashOverlay />
+        <View style={styles.root}>
+          {!hideHeaderRoutes.has(pathname) && <Header onMenuPress={() => setSidebarOpen(true)} title={getRouteTitle(pathname)} />}
+          <View style={styles.content}>
+            <Slot />
+          </View>
+          <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
         </View>
-        <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      </View>
+      </AppThemeProvider>
     </ThemeProvider>
   );
 }
