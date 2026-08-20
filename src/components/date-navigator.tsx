@@ -56,7 +56,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.five,
-    paddingVertical: Spacing.three,
+    paddingVertical: Spacing.one,
   },
   arrow: {
     padding: Spacing.two,

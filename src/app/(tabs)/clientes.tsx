@@ -20,13 +20,14 @@ import { ThemedView } from '@/components/themed-view';
 import { Loading } from '@/utils/loading';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useAuth } from '@/contexts/auth';
+import { usePremium } from '@/contexts/premium';
+import { PremiumModal } from '@/components/premium-modal';
+import { formatCurrency, formatCurrencyInput, parseCurrencyInput } from '@/utils/format';
 import * as ClientService from '@/services/client-service';
 import { getAllSales, updateSale } from '@/services/sale-service';
 import { createPayment, getClientPayments } from '@/services/payment-service';
 import type { Client } from '@/types/schema';
-
-import { useAuth } from '@/contexts/auth';
-import { formatCurrency, formatCurrencyInput, parseCurrencyInput } from '@/utils/format';
 
 function generateClientCode(clients: Client[]): string {
   const max = clients.reduce((max, c) => {
@@ -63,6 +64,7 @@ export default function ClientesScreen() {
   const theme = useTheme();
   const router = useRouter();
   const { user } = useAuth();
+  const { checkLimits } = usePremium();
   const [clients, setClients] = useState<Client[]>([]);
   const [debts, setDebts] = useState<Record<string, number>>({});
   const [lastPurchases, setLastPurchases] = useState<Record<string, Date | null>>({});
@@ -76,6 +78,7 @@ export default function ClientesScreen() {
   const [receiveAmount, setReceiveAmount] = useState('');
   const [transactions, setTransactions] = useState<{ type: 'compra' | 'recebimento'; description: string; amount: number; date: Date }[]>([]);
   const [filter, setFilter] = useState<'todos' | 'devendo' | 'emdia'>('todos');
+  const [showPremiumModal, setShowPremiumModal] = useState(false);
 
   const companyId = user?.uid ?? '';
   const [loading, setLoading] = useState(true);
@@ -134,8 +137,9 @@ export default function ClientesScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      checkLimits();
       loadClients();
-    }, [loadClients])
+    }, [loadClients, checkLimits])
   );
 
   const totalReceivable = useMemo(
@@ -166,7 +170,12 @@ export default function ClientesScreen() {
       .sort((a, b) => (debts[b.id!] ?? 0) - (debts[a.id!] ?? 0));
   }, [clients, debts, filter, search]);
 
-  function openNew() {
+  async function openNew() {
+    const limits = await checkLimits();
+    if (!limits.canAddClient) {
+      setShowPremiumModal(true);
+      return;
+    }
     setEditingId(null);
     setForm({ ...emptyForm, codigo: generateClientCode(clients) });
     setErrors({});
@@ -371,7 +380,7 @@ export default function ClientesScreen() {
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
           {/* Header */}
           <View style={styles.header}>
-            <ThemedText style={styles.headerTitle}>👤 Clientes</ThemedText>
+            <ThemedText style={styles.headerTitle}>Clientes</ThemedText>
             <Pressable onPress={openNew} style={styles.addButton}>
               <ThemedText style={styles.addButtonText}>+ Novo</ThemedText>
             </Pressable>
@@ -425,7 +434,7 @@ export default function ClientesScreen() {
               {/* Client List */}
               {filteredClients.length === 0 ? (
                 <ThemedView style={styles.emptyState}>
-                  <ThemedText style={styles.emptyEmoji}>📋</ThemedText>
+                  <Ionicons name="people" size={48} color={theme.textSecondary} />
                   <ThemedText type="subtitle" style={styles.emptyTitle}>
                     {filter === 'todos' ? 'Nenhum cliente' : filter === 'devendo' ? 'Nenhum cliente devendo' : 'Nenhum cliente em dia'}
                   </ThemedText>
@@ -537,6 +546,10 @@ export default function ClientesScreen() {
           </SafeAreaView>
         </KeyboardAvoidingView>
       </Modal>
+
+      {showPremiumModal && (
+        <PremiumModal type="client" onClose={() => setShowPremiumModal(false)} />
+      )}
     </ThemedView>
   );
 }
@@ -643,7 +656,6 @@ const styles = StyleSheet.create({
   },
   outlineButtonText: { color: '#C4956A', fontWeight: '600', fontSize: 13 },
   emptyState: { alignItems: 'center', justifyContent: 'center', gap: Spacing.three, paddingVertical: Spacing.six },
-  emptyEmoji: { fontSize: 48 },
   emptyTitle: { textAlign: 'center' },
   detailCard: { gap: Spacing.half, paddingVertical: Spacing.two },
   modalContainer: { flex: 1 },

@@ -2,6 +2,7 @@ import { View, Pressable, StyleSheet, Dimensions, Alert } from 'react-native';
 import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
 import { useRouter, usePathname } from 'expo-router';
+import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
@@ -9,20 +10,25 @@ import { ThemedView } from './themed-view';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/contexts/auth';
+import { usePremium } from '@/contexts/premium';
 
 const SIDEBAR_WIDTH = Dimensions.get('window').width * 0.75;
 
 const mainItems = [
-  { emoji: '🏠', label: 'Início', route: '/' },
-  { emoji: '🥩', label: 'Cortes', route: '/cortes' },
-  { emoji: '📊', label: 'Relatórios', route: '/relatorios' },
-  { emoji: '💰', label: 'Pagamentos', route: '/pagamentos' },
-  { emoji: '📄', label: 'Arquivos fiscais', route: '/arquivos-fiscais' },
+  { icon: 'home', label: 'Início', route: '/' },
+  { icon: 'trending-up', label: 'Financeiro', route: '/financeiro' },
+  { icon: 'cash', label: 'Pagamentos', route: '/pagamentos' },
+];
+
+const premiumItems = [
+  { icon: 'bar-chart', label: 'Relatórios', route: '/relatorios' },
+  { icon: 'document-text', label: 'Arquivos fiscais', route: '/arquivos-fiscais' },
 ];
 
 const accountItems = [
-  { emoji: '👑', label: 'Assinatura', route: '/assinatura' },
-  { emoji: '⚙️', label: 'Configurações', route: '/configuracao' },
+  { icon: 'diamond', label: 'Assinatura', route: '/assinatura' },
+  { icon: 'card', label: 'Banco', route: '/banco' },
+  { icon: 'settings', label: 'Configurações', route: '/configuracao' },
 ];
 
 type SidebarProps = {
@@ -35,12 +41,13 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { logout } = useAuth();
+  const { isPremium } = usePremium();
 
-  const tabRoutes = ['/', '/estoque', '/vendas', '/financeiro', '/clientes'];
+  const tabRoutes = ['/', '/estoque', '/vendas', '/financeiro', '/receitas', '/clientes'];
 
   const isActive = (route: string) => {
-    if (route === '/') return tabRoutes.includes(pathname);
-    return pathname.startsWith(route);
+    if (route === '/') return pathname === '/' || pathname === '';
+    return pathname === route || pathname.startsWith(route + '/');
   };
 
   const handleLogout = () => {
@@ -87,6 +94,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
 
           {mainItems.map((item) => {
             const active = isActive(item.route);
+            const iconColor = active ? '#ffffff' : colors.textSecondary;
             return (
               <Pressable
                 key={item.route}
@@ -99,9 +107,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
                   onClose();
                   router.navigate(item.route as any);
                 }}>
-                <ThemedText style={[styles.navEmoji, active && { color: '#ffffff' }]}>
-                  {item.emoji}
-                </ThemedText>
+                <Ionicons name={item.icon as any} size={22} color={iconColor} />
                 <ThemedText
                   type="default"
                   style={[styles.navLabel, active && { color: '#ffffff' }]}>
@@ -113,10 +119,50 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
 
           <View style={styles.separator} />
 
+          <ThemedText style={styles.sectionLabel}>PREMIUM</ThemedText>
+
+          {premiumItems.map((item) => {
+            const active = isActive(item.route);
+            const iconColor = active ? '#ffffff' : !isPremium ? '#C4956A' : colors.textSecondary;
+            return (
+              <Pressable
+                key={item.route}
+                style={({ pressed }) => [
+                  styles.navItem,
+                  active && { backgroundColor: colors.primary },
+                  !isPremium && !active && styles.premiumNavItem,
+                  pressed && !active && { opacity: 0.7 },
+                ]}
+                onPress={() => {
+                  onClose();
+                  router.navigate(item.route as any);
+                }}>
+                <Ionicons name={item.icon as any} size={22} color={iconColor} />
+                <ThemedText
+                  type="default"
+                  style={[
+                    styles.navLabel,
+                    active && { color: '#ffffff' },
+                    !isPremium && !active && styles.premiumLabel,
+                  ]}>
+                  {item.label}
+                </ThemedText>
+                {!isPremium && (
+                  <View style={styles.premiumBadge}>
+                    <Ionicons name="diamond" size={16} color="#C4956A" />
+                  </View>
+                )}
+              </Pressable>
+            );
+          })}
+
+          <View style={styles.separator} />
+
           <ThemedText style={styles.sectionLabel}>CONTA</ThemedText>
 
           {accountItems.map((item) => {
             const active = isActive(item.route);
+            const iconColor = active ? '#ffffff' : colors.textSecondary;
             return (
               <Pressable
                 key={item.route}
@@ -129,9 +175,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
                   onClose();
                   router.navigate(item.route as any);
                 }}>
-                <ThemedText style={[styles.navEmoji, active && { color: '#ffffff' }]}>
-                  {item.emoji}
-                </ThemedText>
+                <Ionicons name={item.icon as any} size={22} color={iconColor} />
                 <ThemedText
                   type="default"
                   style={[styles.navLabel, active && { color: '#ffffff' }]}>
@@ -148,7 +192,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
           <Pressable
             style={({ pressed }) => [styles.navItem, pressed && { opacity: 0.7 }]}
             onPress={handleLogout}>
-            <ThemedText style={styles.navEmoji}>🚪</ThemedText>
+            <Ionicons name="exit" size={22} color="#DC2626" />
             <ThemedText type="default" style={[styles.navLabel, { color: '#DC2626' }]}>
               Sair
             </ThemedText>
@@ -207,14 +251,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 12,
   },
-  navEmoji: {
-    fontSize: 20,
-    width: 28,
-    textAlign: 'center',
-  },
   navLabel: {
     fontSize: 16,
     fontWeight: '500',
+  },
+  premiumNavItem: {
+    backgroundColor: 'rgba(196, 149, 106, 0.1)',
+  },
+  premiumLabel: {
+    color: '#C4956A',
+  },
+  premiumBadge: {
+    marginLeft: 'auto',
   },
   separator: {
     height: 1,

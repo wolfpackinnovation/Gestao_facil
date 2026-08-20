@@ -10,13 +10,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
+import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { DateNavigator } from '@/components/date-navigator';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Loading } from '@/utils/loading';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/contexts/auth';
 import { getSalesByDate, getSaleItems } from '@/services/sale-service';
@@ -198,7 +198,7 @@ export default function VendasScreen() {
 
   const emptyState = (
     <ThemedView style={styles.emptyState}>
-      <ThemedText style={styles.emptyEmoji}>🛒</ThemedText>
+      <Ionicons name="cart" size={48} color={theme.textSecondary} />
       <ThemedText type="subtitle" style={styles.emptyTitle}>Nenhuma venda</ThemedText>
       <ThemedText type="default" themeColor="textSecondary">Registre sua primeira venda.</ThemedText>
     </ThemedView>
@@ -252,6 +252,12 @@ export default function VendasScreen() {
                   <ThemedText type="smallBold" themeColor="textSecondary">Pagamento:</ThemedText>
                   <ThemedText>{selectedSale.paymentMethod}</ThemedText>
                 </ThemedView>
+                {selectedSale.paymentMethod === 'fiado' && selectedSale.clientId && (
+                  <ThemedView style={styles.detailRow}>
+                    <ThemedText type="smallBold" themeColor="textSecondary">Cliente:</ThemedText>
+                    <ThemedText>{clients.find(c => c.id === selectedSale.clientId)?.name ?? selectedSale.clientId}</ThemedText>
+                  </ThemedView>
+                )}
                 <ThemedView style={styles.detailRow}>
                   <ThemedText type="smallBold" themeColor="textSecondary">Status:</ThemedText>
                   <ThemedText>{selectedSale.status}</ThemedText>
@@ -317,7 +323,6 @@ const styles = StyleSheet.create({
   paymentValue: { fontSize: 18, fontWeight: '700' },
 
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing.three },
-  emptyEmoji: { fontSize: 48, lineHeight: 56 },
   emptyTitle: { textAlign: 'center' },
   list: { flex: 1 },
   listContent: { gap: Spacing.three, paddingBottom: BottomTabInset + Spacing.five },

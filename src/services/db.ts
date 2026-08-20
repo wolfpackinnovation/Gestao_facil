@@ -141,8 +141,11 @@ export async function update<T extends BaseEntity>(
   data: Partial<Omit<T, 'id' | 'createdAt'>>
 ): Promise<void> {
   const ref = docRef<T>(collectionName, docId)
+  const cleanData = Object.fromEntries(
+    Object.entries(data as Record<string, unknown>).filter(([, v]) => v !== undefined)
+  )
   await updateDoc(ref, {
-    ...data,
+    ...cleanData,
     updatedAt: Timestamp.now(),
   } as any)
   invalidateByPrefix(collectionName + ':')

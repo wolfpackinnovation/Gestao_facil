@@ -82,6 +82,7 @@ export interface Sale extends BaseEntity {
   status?: string
   paidAmount?: number
   desconto?: number
+  juros?: number
 }
 
 export interface SaleItem extends BaseEntity {

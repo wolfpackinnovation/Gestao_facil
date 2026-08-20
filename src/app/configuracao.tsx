@@ -22,7 +22,6 @@ export default function ConfiguracaoScreen() {
 
   const [loading, setLoading] = useState(true);
   const [settings, setSettings] = useState<AppSettings | null>(null);
-  const [togglingNotif, setTogglingNotif] = useState(false);
 
   const load = useCallback(async () => {
     if (!companyId) return;
@@ -34,17 +33,6 @@ export default function ConfiguracaoScreen() {
   useEffect(() => {
     load();
   }, [load]);
-
-  async function toggleNotifications() {
-    if (!settings || !companyId) return;
-    setTogglingNotif(true);
-    try {
-      const next = !settings.notificationsEnabled;
-      await saveSettings(companyId, { ...settings, notificationsEnabled: next });
-      setSettings({ ...settings, notificationsEnabled: next });
-    } catch {}
-    setTogglingNotif(false);
-  }
 
   if (loading) return <Loading />;
 
@@ -64,27 +52,6 @@ export default function ConfiguracaoScreen() {
             >
               <ThemedText>Editar Perfil</ThemedText>
               <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} />
-            </Pressable>
-
-            <Pressable
-              onPress={toggleNotifications}
-              disabled={togglingNotif}
-              style={[styles.row, { backgroundColor: theme.backgroundElement, opacity: togglingNotif ? 0.6 : 1 }]}
-            >
-              <ThemedText>Notificações</ThemedText>
-              <View
-                style={[
-                  styles.toggle,
-                  settings?.notificationsEnabled && { backgroundColor: theme.primary },
-                ]}
-              >
-                <View
-                  style={[
-                    styles.toggleThumb,
-                    settings?.notificationsEnabled && { transform: [{ translateX: 16 }] },
-                  ]}
-                />
-              </View>
             </Pressable>
           </ThemedView>
 

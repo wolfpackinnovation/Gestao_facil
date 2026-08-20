@@ -1,5 +1,6 @@
 import { Platform, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -10,7 +11,7 @@ export default function MaisScreen() {
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <ThemedView style={styles.heroSection}>
-          <ThemedText style={styles.emoji}>⚙️</ThemedText>
+          <Ionicons name="settings" size={64} color="#C4956A" />
           <ThemedText type="title" style={styles.title}>
             Mais
           </ThemedText>
@@ -55,9 +56,6 @@ const styles = StyleSheet.create({
   },
   code: {
     textTransform: 'uppercase',
-  },
-  emoji: {
-    fontSize: 64,
   },
   placeholder: {
     gap: Spacing.two,

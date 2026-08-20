@@ -1,22 +1,23 @@
 import { useCallback, useRef, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
 import {
   Alert,
   Animated,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  useColorScheme,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, useFocusEffect } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 
 import { DateNavigator } from '@/components/date-navigator';
+import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Loading } from '@/utils/loading';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
@@ -24,23 +25,18 @@ import { useAuth } from '@/contexts/auth';
 import { createFiscalDocument, listFiscalDocuments } from '@/services/fiscal-document-service';
 import { formatCurrency } from '@/utils/format';
 import { parseNFeXML } from '@/utils/parse-nfe-xml';
+import { useTheme } from '@/hooks/use-theme';
 import type { FiscalDocument } from '@/types/schema';
 
 const light = {
-  bg: '#F8F9FB',
   card: '#FFFFFF',
   primary: '#C4956A',
-  text: '#1F2937',
-  textSecondary: '#6B7280',
   border: '#E5E7EB',
 };
 
 const dark = {
-  bg: '#161616',
   card: '#1F1F1F',
   primary: '#C4956A',
-  text: '#FFFFFF',
-  textSecondary: '#9CA3AF',
   border: '#2D2D2D',
 };
 
@@ -64,8 +60,8 @@ function formatDateBR(dateStr: string): string {
 }
 
 export default function ArquivosFiscaisScreen() {
-  const scheme = useColorScheme();
-  const c = scheme === 'dark' ? dark : light;
+  const theme = useTheme();
+  const c = theme.scheme === 'dark' ? dark : light;
   const router = useRouter();
   const { user } = useAuth();
   const companyId = user?.uid ?? '';
@@ -143,6 +139,7 @@ export default function ArquivosFiscaisScreen() {
         status2: '',
         entrada: parsed.entrada,
         fileName: file.name,
+        fileUrl: file.uri,
         notes: `Importado de ${file.name}`,
       });
       Alert.alert('Sucesso', `Documento ${parsed.number} importado com sucesso.`);
@@ -175,11 +172,13 @@ export default function ArquivosFiscaisScreen() {
         status2: '',
         entrada: false,
         fileName: file.name,
+        fileUrl: file.uri,
         notes: `Importado de ${file.name}`,
       });
       Alert.alert('Sucesso', `PDF "${file.name}" importado com sucesso.`);
       loadData();
-    } catch {
+    } catch (e) {
+      console.error('Erro ao importar PDF:', e)
       Alert.alert('Erro', 'Falha ao importar o arquivo PDF.');
     }
   }, [companyId, loadData]);
@@ -200,6 +199,8 @@ export default function ArquivosFiscaisScreen() {
   ];
 
   const filtered = documents.filter((doc) => {
+    const docDate = new Date(doc.date);
+    if (docDate.getMonth() !== referenceDate.getMonth() || docDate.getFullYear() !== referenceDate.getFullYear()) return false;
     const q = search.toLowerCase();
     if (q && !doc.type.toLowerCase().includes(q) && !doc.party.toLowerCase().includes(q) && !doc.number.includes(q)) return false;
     if (activeFilter === 'Entradas' && !doc.entrada) return false;
@@ -209,9 +210,9 @@ export default function ArquivosFiscaisScreen() {
     return true;
   });
 
-  const totalArquivos = documents.length;
-  const entradas = documents.filter((d) => d.entrada).length;
-  const saidas = documents.filter((d) => !d.entrada).length;
+  const totalArquivos = filtered.length;
+  const entradas = filtered.filter((d) => d.entrada).length;
+  const saidas = filtered.filter((d) => !d.entrada).length;
 
   const lastImport = documents.length > 0
     ? `Hoje • 09:32`
@@ -219,40 +220,40 @@ export default function ArquivosFiscaisScreen() {
 
   if (loading) {
     return (
-      <ThemedView style={[styles.container, { backgroundColor: c.bg }]}>
+      <ThemedView style={styles.container}>
         <Loading />
       </ThemedView>
     );
   }
 
   return (
-    <ThemedView style={[styles.container, { backgroundColor: c.bg }]}>
-      <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-        >
-          <DateNavigator selectedDate={referenceDate} onDateChange={changeMonth} mode="month" />
+      <ThemedView style={styles.container}>
+        <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            <DateNavigator selectedDate={referenceDate} onDateChange={changeMonth} mode="month" />
 
           <View style={styles.header}>
             <View style={styles.headerLeft}>
-              <Text style={[styles.headerTitle, { color: c.text }]}>Arquivos Fiscais</Text>
-              <Text style={[styles.headerSub, { color: c.textSecondary }]}>
+              <Text style={[styles.headerTitle, { color: theme.text }]}>Arquivos Fiscais</Text>
+              <Text style={[styles.headerSub, { color: theme.textSecondary }]}>
                 Gerencie notas fiscais, XMLs e PDFs do estabelecimento.
               </Text>
             </View>
           </View>
 
-          <View style={[styles.summaryCard, { backgroundColor: c.card }]}>
+            <View style={[styles.summaryCard, { backgroundColor: c.card }]}>
             <View style={styles.summaryRow}>
               <View style={styles.summaryItem}>
                 <View style={[styles.summaryIconWrap, { backgroundColor: `${c.primary}15` }]}>
                   <Ionicons name="document-text-outline" size={18} color={c.primary} />
                 </View>
                 <View style={styles.summaryTextWrap}>
-                  <Text style={[styles.summaryLabel, { color: c.textSecondary }]}>Total de arquivos</Text>
-                  <Text style={[styles.summaryValue, { color: c.text }]}>{totalArquivos}</Text>
+                  <Text style={[styles.summaryLabel, { color: theme.textSecondary }]} numberOfLines={1}>Total de arquivos</Text>
+                  <Text style={[styles.summaryValue, { color: theme.text }]}>{totalArquivos}</Text>
                 </View>
               </View>
               <View style={styles.summaryItem}>
@@ -260,8 +261,8 @@ export default function ArquivosFiscaisScreen() {
                   <Ionicons name="arrow-down-outline" size={18} color="#22C55E" />
                 </View>
                 <View style={styles.summaryTextWrap}>
-                  <Text style={[styles.summaryLabel, { color: c.textSecondary }]}>Entradas</Text>
-                  <Text style={[styles.summaryValue, { color: c.text }]}>{entradas}</Text>
+                  <Text style={[styles.summaryLabel, { color: theme.textSecondary }]} numberOfLines={1}>Entradas</Text>
+                  <Text style={[styles.summaryValue, { color: theme.text }]}>{entradas}</Text>
                 </View>
               </View>
             </View>
@@ -272,8 +273,8 @@ export default function ArquivosFiscaisScreen() {
                   <Ionicons name="arrow-up-outline" size={18} color="#EF4444" />
                 </View>
                 <View style={styles.summaryTextWrap}>
-                  <Text style={[styles.summaryLabel, { color: c.textSecondary }]}>Saídas</Text>
-                  <Text style={[styles.summaryValue, { color: c.text }]}>{saidas}</Text>
+                  <Text style={[styles.summaryLabel, { color: theme.textSecondary }]} numberOfLines={1}>Saídas</Text>
+                  <Text style={[styles.summaryValue, { color: theme.text }]}>{saidas}</Text>
                 </View>
               </View>
               <View style={styles.summaryItem}>
@@ -281,19 +282,19 @@ export default function ArquivosFiscaisScreen() {
                   <Ionicons name="time-outline" size={18} color={c.primary} />
                 </View>
                 <View style={styles.summaryTextWrap}>
-                  <Text style={[styles.summaryLabel, { color: c.textSecondary }]}>Última importação</Text>
-                  <Text style={[styles.summaryValue, { color: c.text }]}>{lastImport}</Text>
+                  <Text style={[styles.summaryLabel, { color: theme.textSecondary }]} numberOfLines={1}>Última importação</Text>
+                  <Text style={[styles.summaryValue, { color: theme.text }]}>{lastImport}</Text>
                 </View>
               </View>
             </View>
           </View>
 
           <View style={[styles.searchContainer, { backgroundColor: c.card }]}>
-            <Ionicons name="search-outline" size={18} color={c.textSecondary} />
+            <Ionicons name="search-outline" size={18} color={theme.textSecondary} />
             <TextInput
-              style={[styles.searchInput, { color: c.text }]}
+              style={[styles.searchInput, { color: theme.text }]}
               placeholder="Buscar por número, fornecedor ou cliente..."
-              placeholderTextColor={c.textSecondary}
+              placeholderTextColor={theme.textSecondary}
               value={search}
               onChangeText={setSearch}
             />
@@ -319,7 +320,7 @@ export default function ArquivosFiscaisScreen() {
                 <Text
                   style={[
                     styles.filterChipText,
-                    { color: activeFilter === f ? '#FFFFFF' : c.textSecondary },
+                    { color: activeFilter === f ? '#FFFFFF' : theme.textSecondary },
                   ]}
                 >
                   {f}
@@ -330,9 +331,9 @@ export default function ArquivosFiscaisScreen() {
 
           {filtered.length === 0 ? (
             <View style={styles.emptyState}>
-              <Ionicons name="document-text-outline" size={48} color={c.textSecondary} />
-              <Text style={[styles.emptyTitle, { color: c.text }]}>Nenhum documento</Text>
-              <Text style={[styles.emptyText, { color: c.textSecondary }]}>
+              <Ionicons name="document-text-outline" size={48} color={theme.textSecondary} />
+              <Text style={[styles.emptyTitle, { color: theme.text }]}>Nenhum documento</Text>
+              <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
                 Importe notas fiscais ou adicione manualmente.
               </Text>
             </View>
@@ -345,21 +346,21 @@ export default function ArquivosFiscaisScreen() {
                       <Ionicons name={docIcon(doc.type)} size={20} color={c.primary} />
                     </View>
                     <View style={styles.docInfo}>
-                      <Text style={[styles.docType, { color: c.text }]}>{doc.type}</Text>
-                      <Text style={[styles.docParty, { color: c.textSecondary }]}>{doc.party}</Text>
+                      <Text style={[styles.docType, { color: theme.text }]}>{doc.type}</Text>
+                      <Text style={[styles.docParty, { color: theme.textSecondary }]}>{doc.party}</Text>
                     </View>
                   </View>
                   <View style={styles.docRight}>
-                    <Text style={[styles.docValue, { color: c.text }]}>{formatCurrency(doc.value)}</Text>
+                    <Text style={[styles.docValue, { color: theme.text }]}>{formatCurrency(doc.value)}</Text>
                   </View>
                 </View>
                 <View style={styles.docCardBottom}>
                   <View style={styles.docMeta}>
-                    <Text style={[styles.docDate, { color: c.textSecondary }]}>
+                    <Text style={[styles.docDate, { color: theme.textSecondary }]}>
                       {formatDateBR(doc.date)}
                     </Text>
                     <View style={styles.docDot} />
-                    <Text style={[styles.docNumber, { color: c.textSecondary }]}>
+                    <Text style={[styles.docNumber, { color: theme.textSecondary }]}>
                       Nº {doc.number}
                     </Text>
                   </View>
@@ -383,27 +384,37 @@ export default function ArquivosFiscaisScreen() {
                     style={styles.docMenu}
                     onPress={() => setMenuOpenId(menuOpenId === doc.id ? null : doc.id ?? null)}
                   >
-                    <Ionicons name="ellipsis-horizontal" size={18} color={c.textSecondary} />
+                    <Ionicons name="ellipsis-horizontal" size={18} color={theme.textSecondary} />
                   </Pressable>
                 </View>
 
                 {menuOpenId === doc.id && (
                   <View style={[styles.docMenuDropdown, { backgroundColor: c.card, borderColor: c.border }]}>
-                    <Pressable style={styles.docMenuOption}>
-                      <Ionicons name="eye-outline" size={16} color={c.text} />
-                      <Text style={[styles.docMenuOptionText, { color: c.text }]}>Visualizar</Text>
+                    <Pressable
+                      style={styles.docMenuOption}
+                      onPress={() => {
+                        setMenuOpenId(null)
+                        if (!doc.fileUrl) {
+                          Alert.alert('Erro', `URL do arquivo não disponível.\n\nfileName: ${doc.fileName || 'vazio'}\nfileUrl: ${doc.fileUrl || 'vazio'}`)
+                          return
+                        }
+                        Linking.openURL(doc.fileUrl)
+                      }}
+                    >
+                      <Ionicons name="eye-outline" size={16} color={theme.text} />
+                      <Text style={[styles.docMenuOptionText, { color: theme.text }]}>Visualizar</Text>
                     </Pressable>
                     <Pressable style={styles.docMenuOption}>
-                      <Ionicons name="download-outline" size={16} color={c.text} />
-                      <Text style={[styles.docMenuOptionText, { color: c.text }]}>Baixar XML</Text>
+                      <Ionicons name="download-outline" size={16} color={theme.text} />
+                      <Text style={[styles.docMenuOptionText, { color: theme.text }]}>Baixar XML</Text>
                     </Pressable>
                     <Pressable style={styles.docMenuOption}>
-                      <Ionicons name="print-outline" size={16} color={c.text} />
-                      <Text style={[styles.docMenuOptionText, { color: c.text }]}>Imprimir DANFE</Text>
+                      <Ionicons name="print-outline" size={16} color={theme.text} />
+                      <Text style={[styles.docMenuOptionText, { color: theme.text }]}>Imprimir DANFE</Text>
                     </Pressable>
                     <Pressable style={styles.docMenuOption}>
-                      <Ionicons name="share-outline" size={16} color={c.text} />
-                      <Text style={[styles.docMenuOptionText, { color: c.text }]}>Compartilhar</Text>
+                      <Ionicons name="share-outline" size={16} color={theme.text} />
+                      <Text style={[styles.docMenuOptionText, { color: theme.text }]}>Compartilhar</Text>
                     </Pressable>
                   </View>
                 )}
@@ -430,8 +441,8 @@ export default function ArquivosFiscaisScreen() {
                   opt.onPress();
                 }}
               >
-                <Ionicons name={opt.icon} size={18} color={c.text} />
-                <Text style={[styles.fabOptionLabel, { color: c.text }]}>{opt.label}</Text>
+                <Ionicons name={opt.icon} size={18} color={theme.text} />
+                <Text style={[styles.fabOptionLabel, { color: theme.text }]}>{opt.label}</Text>
               </Pressable>
             ))}
           </View>
@@ -521,6 +532,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
+    overflow: 'hidden',
   },
   summaryIconWrap: {
     width: 36,
@@ -531,16 +543,19 @@ const styles = StyleSheet.create({
   },
   summaryTextWrap: {
     gap: 2,
+    flex: 1,
   },
   summaryLabel: {
     fontSize: 11,
     fontWeight: '500',
     letterSpacing: 0.3,
     textTransform: 'uppercase',
+    flexShrink: 1,
   },
   summaryValue: {
     fontSize: 18,
     fontWeight: '700',
+    flexShrink: 1,
   },
   summaryDivider: {
     height: 1,

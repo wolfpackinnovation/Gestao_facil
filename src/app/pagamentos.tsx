@@ -25,11 +25,12 @@ import {
   getDespesas,
   createDespesa,
   updateDespesa,
+  deleteDespesa,
   CATEGORIAS_DESPESA,
   type CategoriaDespesa,
   type Despesa,
 } from '@/services/despesa-service';
-import { formatCurrency, formatCurrencyInput, parseCurrencyInput, formatDateInput } from '@/utils/format';
+import { formatCurrency, formatCurrencyInput, parseCurrencyInput } from '@/utils/format';
 
 function getMonthRange(ref: Date): { start: Date; end: Date } {
   const start = new Date(ref);
@@ -46,9 +47,15 @@ function filterDividasByPeriod(dividas: Despesa[], ref: Date): Despesa[] {
   const startStr = start.toISOString().slice(0, 10);
   const endStr = end.toISOString().slice(0, 10);
   return dividas.filter((d) => {
-    const [dd, mm, yyyy] = d.vencimento!.split('/');
-    const vencStr = `${yyyy}-${mm}-${dd}`;
-    return vencStr >= startStr && vencStr <= endStr;
+    const dateStr = d.vencimento ? d.vencimento : d.data?.slice(0, 10);
+    if (!dateStr) return false;
+    if (d.vencimento) {
+      const [dd, mm, yyyy] = d.vencimento.split('/');
+      const vencStr = `${yyyy}-${mm}-${dd}`;
+      return vencStr >= startStr && vencStr <= endStr;
+    } else {
+      return dateStr >= startStr && dateStr <= endStr;
+    }
   });
 }
 
@@ -62,11 +69,14 @@ export default function PagamentosScreen() {
   const [despesas, setDespesas] = useState<Despesa[]>([]);
   const [fabOpen, setFabOpen] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [descricao, setDescricao] = useState('');
   const [valor, setValor] = useState('');
   const [categoria, setCategoria] = useState<CategoriaDespesa>('Outros');
   const [observacao, setObservacao] = useState('');
   const [vencimento, setVencimento] = useState('');
+  const [hasVencimento, setHasVencimento] = useState(true);
 
   const loadData = useCallback(async () => {
     if (!companyId) return;
@@ -101,31 +111,91 @@ export default function PagamentosScreen() {
       return;
     }
     try {
-      await createDespesa({
-        companyId,
-        descricao: descricao.trim(),
-        valor: parsedValor,
-        categoria,
-        data: new Date().toISOString().slice(0, 10),
-        observacao: observacao.trim(),
-        vencimento: vencimento.trim() || undefined,
-      });
-      setModalVisible(false);
+      if (editingId) {
+        await updateDespesa(editingId, {
+          descricao: descricao.trim(),
+          valor: parsedValor,
+          categoria,
+          observacao: observacao.trim(),
+          vencimento: hasVencimento ? vencimento.trim() : undefined,
+          pago: hasVencimento ? false : true,
+        });
+        setModalVisible(false);
+        setEditingId(null);
+        Alert.alert('Despesa atualizada', `R$ ${parsedValor.toFixed(2)} em "${descricao.trim()}"`);
+      } else {
+        await createDespesa({
+          companyId,
+          descricao: descricao.trim(),
+          valor: parsedValor,
+          categoria,
+          data: new Date().toISOString().slice(0, 10),
+          observacao: observacao.trim(),
+          vencimento: hasVencimento ? vencimento.trim() : undefined,
+          pago: hasVencimento ? false : true,
+        });
+        setModalVisible(false);
+        Alert.alert('Despesa registrada', `R$ ${parsedValor.toFixed(2)} em "${descricao.trim()}"`);
+      }
       await loadData();
-      Alert.alert('Despesa registrada', `R$ ${parsedValor.toFixed(2)} em "${descricao.trim()}"`);
     } catch (e: any) {
       Alert.alert('Erro', e?.message ?? 'Erro ao salvar despesa.');
     }
+  }
+
+  function handleEdit(item: Despesa) {
+    setFabOpen(false);
+    setEditingId(item.id);
+    setDescricao(item.descricao);
+    setValor(formatCurrencyInput(item.valor.toString()));
+    setCategoria(item.categoria);
+    setObservacao(item.observacao || '');
+    setVencimento(item.vencimento || '');
+    setModalVisible(true);
+  }
+
+  function handleDelete(item: Despesa) {
+    Alert.alert(
+      'Excluir Despesa',
+      `Excluir "${item.descricao}" de ${formatCurrency(item.valor)}?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Excluir',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteDespesa(item.id);
+              await loadData();
+            } catch (e: any) {
+              Alert.alert('Erro', e?.message ?? 'Erro ao excluir despesa.');
+            }
+          },
+        },
+      ],
+    );
+  }
+
+  function handleCloseModal() {
+    setModalVisible(false);
+    setEditingId(null);
+    setDescricao('');
+    setValor('');
+    setCategoria('Outros');
+    setObservacao('');
+    setVencimento('');
+    setHasVencimento(true);
   }
 
   function changeMonth(delta: number) {
     setReferenceDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + delta));
   }
 
-  const dividas = useMemo(() => despesas.filter((d) => d.vencimento), [despesas]);
-  const dividasPeriodo = useMemo(() => filterDividasByPeriod(dividas, referenceDate), [dividas, referenceDate]);
+  const dividasPeriodo = useMemo(() => filterDividasByPeriod(despesas, referenceDate), [despesas, referenceDate]);
+  const dividasPagas = useMemo(() => dividasPeriodo.filter((d) => d.pago === true), [dividasPeriodo]);
+  const dividasPendentes = useMemo(() => dividasPeriodo.filter((d) => d.pago !== true), [dividasPeriodo]);
   const totalPeriodo = useMemo(() => dividasPeriodo.reduce((sum, d) => sum + d.valor, 0), [dividasPeriodo]);
-  const totalPendente = useMemo(() => dividasPeriodo.filter((d) => !d.pago).reduce((sum, d) => sum + d.valor, 0), [dividasPeriodo]);
+  const totalPendente = useMemo(() => dividasPendentes.reduce((sum, d) => sum + d.valor, 0), [dividasPendentes]);
 
   async function handlePagar(item: Despesa) {
     Alert.alert(
@@ -156,30 +226,52 @@ export default function PagamentosScreen() {
       return vencDate < new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
     })();
     return (
-      <ThemedView style={[styles.expenseItem, item.pago && { opacity: 0.5 }]}>
-        <ThemedView style={styles.expenseRow}>
-          <ThemedText style={styles.expenseDesc} numberOfLines={1}>{item.descricao}</ThemedText>
-          <ThemedView style={{ alignItems: 'flex-end' }}>
-            <ThemedText style={[styles.expenseValue, item.pago && { textDecorationLine: 'line-through', opacity: 0.6 }]}>
-              {formatCurrency(item.valor)}
-            </ThemedText>
-            {item.vencimento && !item.pago && (
-              <ThemedText type="small" style={{ color: vencido ? '#DC2626' : '#F59E0B' }}>
-                Vence {item.vencimento}{vencido ? ' (vencido)' : ''}
+      <View>
+        <ThemedView style={[styles.expenseItem, item.pago && { opacity: 0.5 }]}>
+          <ThemedView style={styles.expenseRow}>
+            <ThemedText style={styles.expenseDesc} numberOfLines={1}>{item.descricao}</ThemedText>
+            <ThemedView style={{ alignItems: 'flex-end', flexDirection: 'row', gap: Spacing.two }}>
+              <ThemedText style={[styles.expenseValue, item.pago && { textDecorationLine: 'line-through', opacity: 0.6 }]}>
+                {formatCurrency(item.valor)}
               </ThemedText>
-            )}
-            {item.pago && (
-              <ThemedText type="small" style={{ color: '#22C55E' }}>Pago</ThemedText>
-            )}
+              <Pressable onPress={() => setOpenMenuId(openMenuId === item.id ? null : item.id)} style={styles.menuButton}>
+                <ThemedText style={styles.menuButtonText}>⋮</ThemedText>
+              </Pressable>
+            </ThemedView>
           </ThemedView>
+          <ThemedView style={styles.expenseRow}>
+            <View style={{ flex: 1 }}>
+              {item.vencimento && !item.pago && (
+                <ThemedText type="small" style={{ color: vencido ? '#DC2626' : '#F59E0B' }}>
+                  Vence {item.vencimento}{vencido ? ' (vencido)' : ''}
+                </ThemedText>
+              )}
+              {item.pago && (
+                <ThemedText type="small" style={{ color: '#22C55E' }}>Pago</ThemedText>
+              )}
+              {!item.vencimento && !item.pago && (
+                <ThemedText type="small" themeColor="textSecondary">Sem vencimento</ThemedText>
+              )}
+            </View>
+          </ThemedView>
+          <ThemedText type="small" themeColor="textSecondary">Categoria: {item.categoria}</ThemedText>
+          {!item.pago && (
+            <Pressable onPress={() => handlePagar(item)} style={styles.payButtonFull}>
+              <ThemedText style={styles.payButtonFullText}>Pagar</ThemedText>
+            </Pressable>
+          )}
         </ThemedView>
-        <ThemedText type="small" themeColor="textSecondary">Categoria: {item.categoria}</ThemedText>
-        {!item.pago && (
-          <Pressable onPress={() => handlePagar(item)} style={styles.payButton}>
-            <ThemedText style={styles.payButtonText}>Pagar</ThemedText>
-          </Pressable>
+        {openMenuId === item.id && (
+          <ThemedView style={styles.menuDropdown}>
+            <Pressable onPress={() => { setOpenMenuId(null); handleEdit(item); }} style={styles.menuItem}>
+              <ThemedText style={styles.menuItemText}>Editar</ThemedText>
+            </Pressable>
+            <Pressable onPress={() => { setOpenMenuId(null); handleDelete(item); }} style={[styles.menuItem, { borderTopWidth: 0 }]}>
+              <ThemedText style={[styles.menuItemText, { color: '#DC2626' }]}>Excluir</ThemedText>
+            </Pressable>
+          </ThemedView>
         )}
-      </ThemedView>
+      </View>
     );
   }
 
@@ -199,12 +291,14 @@ export default function PagamentosScreen() {
                 <DateNavigator selectedDate={referenceDate} onDateChange={changeMonth} mode="month" />
                 <ThemedView style={styles.summaryRow}>
                   <ThemedView style={styles.summaryCard}>
-                    <ThemedText style={[styles.summaryLabel, { color: '#C4956A' }]}>Total do Mês</ThemedText>
-                    <ThemedText style={[styles.summaryValue, { color: '#C4956A' }]}>{formatCurrency(totalPeriodo)}</ThemedText>
+                    <ThemedText style={[styles.summaryLabel, { color: '#DC2626' }]}>Pendentes</ThemedText>
+                    <ThemedText style={[styles.summaryValue, { color: '#DC2626' }]}>{formatCurrency(totalPendente)}</ThemedText>
+                    <ThemedText type="small" themeColor="textSecondary">{dividasPendentes.length} contas</ThemedText>
                   </ThemedView>
                   <ThemedView style={styles.summaryCard}>
-                    <ThemedText style={[styles.summaryLabel, { color: '#6B7280' }]}>Pendente</ThemedText>
-                    <ThemedText style={[styles.summaryValue, { color: '#6B7280' }]}>{formatCurrency(totalPendente)}</ThemedText>
+                    <ThemedText style={[styles.summaryLabel, { color: '#22C55E' }]}>Pagas</ThemedText>
+                    <ThemedText style={[styles.summaryValue, { color: '#22C55E' }]}>{formatCurrency(totalPeriodo - totalPendente)}</ThemedText>
+                    <ThemedText type="small" themeColor="textSecondary">{dividasPagas.length} contas</ThemedText>
                   </ThemedView>
                 </ThemedView>
               </ThemedView>
@@ -235,15 +329,15 @@ export default function PagamentosScreen() {
           <ThemedText style={styles.fabIcon}>+</ThemedText>
         </Pressable>
 
-        <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setModalVisible(false)}>
+        <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCloseModal}>
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             style={[styles.modalContainer, { backgroundColor: theme.background }]}
           >
             <SafeAreaView style={{ flex: 1 }}>
               <ThemedView style={styles.modalHeader}>
-                <ThemedText style={{ fontSize: 22, fontWeight: '700' }}>Nova Despesa</ThemedText>
-                <Pressable onPress={() => setModalVisible(false)}>
+                <ThemedText style={{ fontSize: 22, fontWeight: '700' }}>{editingId ? 'Editar Despesa' : 'Nova Despesa'}</ThemedText>
+                <Pressable onPress={handleCloseModal}>
                   <ThemedText type="default" themeColor="textSecondary">Cancelar</ThemedText>
                 </Pressable>
               </ThemedView>
@@ -298,16 +392,49 @@ export default function PagamentosScreen() {
                 </ThemedView>
 
                 <ThemedView style={styles.fieldGroup}>
-                  <ThemedText type="smallBold" style={styles.fieldLabel}>Data de Vencimento (opcional)</ThemedText>
-                  <TextInput
-                    style={[styles.input, { color: theme.text, backgroundColor: theme.backgroundElement }]}
-                    placeholder="DD/MM/AAAA"
-                    placeholderTextColor={theme.textSecondary}
-                    value={vencimento}
-                    onChangeText={(v) => setVencimento(formatDateInput(v))}
-                    keyboardType="numbers-and-punctuation"
-                  />
+                  <ThemedText type="smallBold" style={styles.fieldLabel}>Tipo de despesa</ThemedText>
+                  <View style={styles.choiceRow}>
+                    <Pressable
+                      onPress={() => {
+                        setHasVencimento(false);
+                        setVencimento('');
+                      }}
+                      style={[
+                        styles.choiceButton,
+                        { backgroundColor: !hasVencimento ? theme.primary : theme.backgroundElement },
+                      ]}
+                    >
+                      <ThemedText style={[styles.choiceText, { color: !hasVencimento ? '#fff' : theme.text }]}>
+                        Pago
+                      </ThemedText>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => setHasVencimento(true)}
+                      style={[
+                        styles.choiceButton,
+                        { backgroundColor: hasVencimento ? theme.primary : theme.backgroundElement },
+                      ]}
+                    >
+                      <ThemedText style={[styles.choiceText, { color: hasVencimento ? '#fff' : theme.text }]}>
+                        Pendente
+                      </ThemedText>
+                    </Pressable>
+                  </View>
                 </ThemedView>
+
+                {hasVencimento && (
+                  <ThemedView style={styles.fieldGroup}>
+                    <ThemedText type="smallBold" style={styles.fieldLabel}>Data de Vencimento</ThemedText>
+                    <TextInput
+                      style={[styles.input, { color: theme.text, backgroundColor: theme.backgroundElement }]}
+                      placeholder="DD/MM/AAAA"
+                      placeholderTextColor={theme.textSecondary}
+                      value={vencimento}
+                      onChangeText={(v) => setVencimento(formatDateInput(v))}
+                      keyboardType="numbers-and-punctuation"
+                    />
+                  </ThemedView>
+                )}
 
                 <ThemedView style={styles.fieldGroup}>
                   <ThemedText type="smallBold" style={styles.fieldLabel}>Observação (opcional)</ThemedText>
@@ -383,15 +510,52 @@ const styles = StyleSheet.create({
   expenseDesc: { fontSize: 15, fontWeight: '600', flex: 1 },
   expenseValue: { fontSize: 16, fontWeight: '700' },
   expenseMeta: { flexDirection: 'row', gap: Spacing.two },
-  payButton: {
-    backgroundColor: '#22C55E',
-    paddingVertical: Spacing.two,
-    borderRadius: Spacing.one,
-    alignItems: 'center',
-    marginTop: Spacing.half,
+  menuButton: { paddingHorizontal: Spacing.one },
+  menuButtonText: { fontSize: 20, fontWeight: '700' },
+  menuDropdown: {
+    position: 'absolute',
+    right: Spacing.three,
+    top: 40,
+    backgroundColor: '#fff',
+    borderRadius: Spacing.two,
+    borderWidth: 1,
+    borderColor: 'rgba(128,128,128,0.2)',
+    zIndex: 100,
+    minWidth: 120,
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 4 },
+      android: { elevation: 4 },
+    }),
   },
-  payButtonText: { fontSize: 13, fontWeight: '700', color: '#fff' },
+  menuItem: {
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(128,128,128,0.2)',
+  },
+  menuItemText: { fontSize: 14, fontWeight: '500' },
+  actionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: Spacing.half },
+  payButtonFull: {
+    backgroundColor: '#C4956A',
+    paddingVertical: Spacing.two,
+    borderRadius: Spacing.two,
+    alignItems: 'center',
+    marginTop: Spacing.two,
+  },
+  payButtonFullText: { fontSize: 14, fontWeight: '600', color: '#fff' },
+  menuButtonFull: { alignItems: 'center', marginTop: Spacing.two, padding: Spacing.one },
+  menuButtonFullText: { fontSize: 12, color: '#6B7280' },
   emptyText: { fontSize: 14, opacity: 0.5, textAlign: 'center', paddingVertical: Spacing.six },
+  choiceRow: { flexDirection: 'row', gap: Spacing.two },
+  choiceButton: {
+    flex: 1,
+    paddingVertical: Spacing.two,
+    borderRadius: Spacing.two,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#C4956A',
+  },
+  choiceText: { fontSize: 14, fontWeight: '500' },
 
   fab: {
     position: 'absolute',

@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
+import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -27,7 +28,8 @@ import { getProdutos } from '@/services/estoque-storage';
 import type { Produto } from '@/services/estoque-storage';
 import type { Sale } from '@/types/schema';
 import { formatCurrency, formatCurrencyInput } from '@/utils/format';
-import { createDespesa } from '@/services/despesa-service';
+import { createDespesa, getDespesas, type Despesa } from '@/services/despesa-service';
+import { listLotes, isLoteVencido } from '@/services/lote-service';
 
 function formatDayName(date: Date): string {
   return date.toLocaleDateString('pt-BR', { weekday: 'long' });
@@ -39,6 +41,41 @@ function formatDate(date: Date): string {
 
 function capitalize(str: string): string {
   return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+function parseBRDate(dateStr: string): Date | null {
+  if (!dateStr) return null
+  const [dd, mm, yyyy] = dateStr.split('/').map(Number)
+  if (!dd || !mm || !yyyy) return null
+  return new Date(yyyy, mm - 1, dd)
+}
+
+function diffInDays(target: Date, base: Date): number {
+  const t = new Date(target.getFullYear(), target.getMonth(), target.getDate())
+  const b = new Date(base.getFullYear(), base.getMonth(), base.getDate())
+  return Math.round((t.getTime() - b.getTime()) / (1000 * 60 * 60 * 24))
+}
+
+function debtStatusLabel(days: number): { text: string; color: string } {
+  if (days < 0) return { text: `vencido há ${Math.abs(days)}d`, color: '#ef4444' }
+  if (days === 0) return { text: 'vence hoje', color: '#f59e0b' }
+  if (days === 1) return { text: 'vence amanhã', color: '#f59e0b' }
+  return { text: `em ${days} dias`, color: '#6b7280' }
+}
+
+function formatChartCurrency(value: number): string {
+  if (value === 0) return 'R$ 0'
+  if (value < 1000) return `R$ ${value.toFixed(0)}`
+  if (value < 10000) {
+    const k = (value / 1000).toFixed(1).replace('.0', '')
+    return `R$ ${k}k`
+  }
+  if (value < 1_000_000) {
+    const k = Math.round(value / 1000)
+    return `R$ ${k}k`
+  }
+  const m = (value / 1_000_000).toFixed(1).replace('.0', '')
+  return `R$ ${m}M`
 }
 
 const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -59,6 +96,8 @@ export default function HomeScreen() {
   const [products, setProducts] = useState<Produto[]>([]);
   const [lowStockProducts, setLowStockProducts] = useState<Produto[]>([]);
   const [topProducts, setTopProducts] = useState<{ name: string; count: number }[]>([]);
+  const [upcomingDebts, setUpcomingDebts] = useState<Despesa[]>([]);
+  const [pendingBills, setPendingBills] = useState<{ count: number; total: number }>({ count: 0, total: 0 });
   const [fabOpen, setFabOpen] = useState(false);
   const fabAnim = useRef(new Animated.Value(0)).current;
   const [dividaModal, setDividaModal] = useState(false);
@@ -74,7 +113,7 @@ export default function HomeScreen() {
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
 
-    const [todayData, yesterdayData, todayPayData, yesterdayPayData, allProducts, allSales, allPayments] = await Promise.all([
+    const [todayData, yesterdayData, todayPayData, yesterdayPayData, allProducts, allSales, allPayments, allDespesas, allLotes] = await Promise.all([
       getTodaySales(companyId),
       getSalesByDate(companyId, yesterday),
       getPaymentsByDate(companyId, today),
@@ -82,6 +121,8 @@ export default function HomeScreen() {
       getProdutos(companyId),
       getAllSales(companyId),
       getAllPayments(companyId),
+      getDespesas(companyId),
+      listLotes(companyId),
     ]);
 
     const weekTotalsArr: number[] = [];
@@ -103,9 +144,23 @@ export default function HomeScreen() {
     }
     setWeekTotals(weekTotalsArr);
 
-    const lowStock = allProducts.filter(
-      (p) => p.estoqueMinimo > 0 && (p.estoqueAtual ?? 0) <= p.estoqueMinimo
-    );
+    const expiredLotes = allLotes.filter((l) => isLoteVencido(l, today));
+    const expiredProductIds = [...new Set(expiredLotes.map((l) => l.productId))];
+    const expiredProducts = allProducts.filter((p) => expiredProductIds.includes(p.id));
+
+    const debts = allDespesas
+      .filter((d) => !d.pago && d.vencimento)
+      .map((d) => ({ debt: d, days: diffInDays(parseBRDate(d.vencimento!)!, today) }))
+      .filter((x) => x.days <= 7)
+      .sort((a, b) => a.days - b.days)
+      .slice(0, 5)
+      .map((x) => x.debt);
+
+    const pending = allDespesas
+      .filter((d) => d.pago !== true && d.vencimento)
+      .map((d) => ({ debt: d, days: diffInDays(parseBRDate(d.vencimento!)!, today) }))
+      .filter((x) => x.days <= 7);
+    const pendingTotal = pending.reduce((sum, d) => sum + d.debt.valor, 0);
 
     setTodaySales(todayData);
     setYesterdaySales(yesterdayData);
@@ -113,7 +168,9 @@ export default function HomeScreen() {
     setYesterdayPayments(yesterdayPayData);
     setAllSales(allSales);
     setProducts(allProducts);
-    setLowStockProducts(lowStock);
+    setLowStockProducts(expiredProducts);
+    setUpcomingDebts(debts);
+    setPendingBills({ count: pending.length, total: pendingTotal });
 
     const itemsPromises = todayData.map((s) => s.id ? getSaleItems(s.id) : Promise.resolve([]));
     const allItems = (await Promise.all(itemsPromises)).flat();
@@ -273,28 +330,45 @@ export default function HomeScreen() {
           {/* Stats Grid */}
           <View style={styles.statsGrid}>
             <View style={styles.statsRow}>
-              <View style={styles.statBox}>
+              <Pressable style={({ pressed }) => [styles.statBox, pressed && { opacity: 0.7 }]} onPress={() => router.push('/vendas')}>
                 <ThemedText style={styles.statValue}>{monthSales.length}</ThemedText>
                 <ThemedText style={styles.statLabel}>Vendas</ThemedText>
-              </View>
+              </Pressable>
               <View style={styles.statBox}>
                 <ThemedText style={styles.statValue}>{formatCurrency(averageTicket)}</ThemedText>
                 <ThemedText style={styles.statLabel}>Ticket Médio</ThemedText>
               </View>
             </View>
             <View style={styles.statsRow}>
-              <View style={styles.statBox}>
+              <Pressable style={({ pressed }) => [styles.statBox, pressed && { opacity: 0.7 }]} onPress={() => router.push('/estoque')}>
                 <ThemedText style={styles.statValue}>{products.length}</ThemedText>
                 <ThemedText style={styles.statLabel}>Produtos</ThemedText>
-              </View>
-              <View style={styles.statBox}>
+              </Pressable>
+              <Pressable style={({ pressed }) => [styles.statBox, pressed && { opacity: 0.7 }]} onPress={() => router.push('/estoque')}>
                 <ThemedText style={[styles.statValue, lowStockProducts.length > 0 && { color: '#ef4444' }]}>
                   {lowStockProducts.length} {lowStockProducts.length === 1 ? 'Alerta' : 'Alertas'}
                 </ThemedText>
                 <ThemedText style={styles.statLabel}>Estoque</ThemedText>
-              </View>
+              </Pressable>
             </View>
           </View>
+
+          {/* Próximas do Vencimento */}
+          <Pressable style={({ pressed }) => [pressed && { opacity: 0.7 }]} onPress={() => router.push('/pagamentos')}>
+            <ThemedView style={styles.pendingBillCard}>
+              <View style={styles.pendingBillLeft}>
+                <ThemedText type="defaultBold" style={styles.pendingBillLabel}>
+                  Próximas do Vencimento
+                </ThemedText>
+                <ThemedText type="small" themeColor="textSecondary" style={styles.pendingBillCount}>
+                  {pendingBills.count} {pendingBills.count === 1 ? 'conta' : 'contas'}
+                </ThemedText>
+              </View>
+              <ThemedText style={styles.pendingBillValue}>
+                {formatCurrency(pendingBills.total)}
+              </ThemedText>
+            </ThemedView>
+          </Pressable>
 
           {/* Week Sales Chart */}
           <ThemedView style={styles.sectionGroup}>
@@ -303,32 +377,95 @@ export default function HomeScreen() {
           </ThemedView>
 
           {/* Alerts */}
-          <ThemedView style={styles.sectionGroup}>
-            <ThemedText style={styles.sectionTitle}>Atenção</ThemedText>
-            <View style={styles.alertBox}>
-              <ThemedText style={styles.alertItem}>
-                • {lowStockProducts.length} {lowStockProducts.length === 1 ? 'produto acabando' : 'produtos acabando'}
-              </ThemedText>
-              <ThemedText style={styles.alertItem}>• 0 contas vencem hoje</ThemedText>
-              <ThemedText style={styles.alertItem}>• 0 cliente possui fiado atrasado</ThemedText>
-            </View>
-          </ThemedView>
+          <Pressable onPress={() => router.push('/estoque')}>
+            <ThemedView style={styles.sectionGroup}>
+              <ThemedText style={styles.sectionTitle}>Atenção</ThemedText>
+              <View style={styles.alertBox}>
+                <ThemedText style={styles.alertItem}>
+                  • {lowStockProducts.length} {lowStockProducts.length === 1 ? 'produto vencido' : 'produtos vencidos'}
+                </ThemedText>
+                <ThemedText style={styles.alertItem}>
+                  • {upcomingDebts.length === 0
+                    ? 'Nenhuma conta a vencer'
+                    : upcomingDebts.some((d) => diffInDays(parseBRDate(d.vencimento!)!, today) < 0)
+                      ? `${upcomingDebts.length} ${upcomingDebts.length === 1 ? 'conta vencida' : 'contas vencidas/próximas'}`
+                      : `${upcomingDebts.length} ${upcomingDebts.length === 1 ? 'conta próxima' : 'contas próximas'} do vencimento`}
+                </ThemedText>
+                <ThemedText style={styles.alertItem}>• 0 cliente possui fiado atrasado</ThemedText>
+              </View>
+            </ThemedView>
+          </Pressable>
+
+          {/* Upcoming Debts */}
+          {upcomingDebts.length > 0 && (
+            <Pressable
+              onPress={() => router.push('/pagamentos' as any)}
+              style={({ pressed }) => [styles.debtCardPressable, pressed && { opacity: 0.85 }]}
+            >
+              <ThemedView style={styles.sectionGroup}>
+                <View style={styles.debtHeader}>
+                  <ThemedText style={styles.sectionTitle}>Contas a pagar</ThemedText>
+                  <View style={styles.debtBadge}>
+                    <ThemedText style={styles.debtBadgeText}>{upcomingDebts.length}</ThemedText>
+                  </View>
+                </View>
+
+                <ThemedView style={styles.debtCard}>
+                  {upcomingDebts.map((d, i) => {
+                    const days = diffInDays(parseBRDate(d.vencimento!)!, today)
+                    const status = debtStatusLabel(days)
+                    const isLast = i === upcomingDebts.length - 1
+                    return (
+                      <View
+                        key={d.id}
+                        style={[styles.debtRow, !isLast && styles.debtRowDivider]}
+                      >
+                        <View style={styles.debtRowLeft}>
+                          <ThemedText style={styles.debtDesc} numberOfLines={1}>
+                            {d.descricao}
+                          </ThemedText>
+                          <ThemedText style={styles.debtDate}>
+                            <ThemedText style={{ color: status.color, fontWeight: '600' }}>
+                              {status.text}
+                            </ThemedText>
+                            {' · '}{d.vencimento}
+                          </ThemedText>
+                        </View>
+                        <ThemedText style={styles.debtValue}>
+                          {formatCurrency(d.valor)}
+                        </ThemedText>
+                      </View>
+                    )
+                  })}
+
+                  <View style={styles.debtTotalRow}>
+                    <ThemedText type="small" themeColor="textSecondary">Total</ThemedText>
+                    <ThemedText style={styles.debtTotalValue}>
+                      {formatCurrency(upcomingDebts.reduce((s, d) => s + d.valor, 0))}
+                    </ThemedText>
+                  </View>
+                </ThemedView>
+              </ThemedView>
+            </Pressable>
+          )}
 
           {/* Top Products */}
-          <ThemedView style={styles.sectionGroup}>
-            <ThemedText style={styles.sectionTitle}>Produtos mais vendidos</ThemedText>
-            <View style={styles.topProductsBox}>
-              {topProducts.length === 0 ? (
-                <ThemedText style={styles.emptyText}>Nenhum produto vendido hoje</ThemedText>
-              ) : (
-                topProducts.map((p, i) => (
-                  <ThemedText key={p.name} style={styles.topProductItem}>
-                    {i + 1}. {p.name}
-                  </ThemedText>
-                ))
-              )}
-            </View>
-          </ThemedView>
+          <Pressable style={({ pressed }) => [pressed && { opacity: 0.7 }]} onPress={() => router.push('/estoque')}>
+            <ThemedView style={styles.sectionGroup}>
+              <ThemedText style={styles.sectionTitle}>Produtos mais vendidos</ThemedText>
+              <View style={styles.topProductsBox}>
+                {topProducts.length === 0 ? (
+                  <ThemedText style={styles.emptyText}>Nenhum produto vendido hoje</ThemedText>
+                ) : (
+                  topProducts.map((p, i) => (
+                    <ThemedText key={p.name} style={styles.topProductItem}>
+                      {i + 1}. {p.name}
+                    </ThemedText>
+                  ))
+                )}
+              </View>
+            </ThemedView>
+          </Pressable>
 
         </ScrollView>
       </SafeAreaView>
@@ -342,10 +479,10 @@ export default function HomeScreen() {
 
       {/* FAB Menu Items */}
       {[
-        { label: 'Nova Venda', icon: '💰', onPress: () => handleAction('/nova-venda?from=/(tabs)'), },
-        { label: 'Novo Produto', icon: '📦', onPress: () => handleAction('/estoque') },
-        { label: 'Adicionar Dívida', icon: '💳', onPress: handleAddDivida },
-        { label: 'Receber Fiado', icon: '📝', onPress: () => handleAction('/clientes') },
+        { label: 'Nova Venda', icon: 'cash', onPress: () => handleAction('/nova-venda?from=/(tabs)'), },
+        { label: 'Novo Produto', icon: 'cube', onPress: () => handleAction('/estoque') },
+        { label: 'Adicionar Dívida', icon: 'card', onPress: handleAddDivida },
+        { label: 'Receber Fiado', icon: 'document-text', onPress: () => handleAction('/clientes') },
       ].map((item, i) => {
         const translateY = fabAnim.interpolate({
           inputRange: [0, 1],
@@ -369,7 +506,7 @@ export default function HomeScreen() {
               ]}
             >
               <Pressable onPress={item.onPress} style={styles.fabItemPress}>
-                <ThemedText style={{ fontSize: 16 }}>{item.icon}</ThemedText>
+                <Ionicons name={item.icon as any} size={20} color={theme.text} />
                 <ThemedText style={styles.fabItemLabel}>{item.label}</ThemedText>
               </Pressable>
             </Animated.View>
@@ -476,7 +613,9 @@ function WeekChart({ data }: { data: number[] }) {
       <View style={styles.chartBars}>
         {bars.map((bar, idx) => (
           <View key={idx} style={styles.chartCol}>
-            <ThemedText style={styles.chartValue}>{formatCurrency(bar.value)}</ThemedText>
+            <ThemedText style={styles.chartValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+              {formatChartCurrency(bar.value)}
+            </ThemedText>
             <View
               style={[
                 styles.chartBar,
@@ -615,8 +754,100 @@ const styles = StyleSheet.create({
   alertBox: { borderRadius: Spacing.three, padding: Spacing.three, gap: Spacing.one, borderWidth: 1, borderColor: 'rgba(128,128,128,0.2)' },
   alertItem: { fontSize: 14, lineHeight: 22 },
 
+  debtCardPressable: {},
+  debtHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  debtBadge: {
+    backgroundColor: 'rgba(245,158,11,0.15)',
+    paddingHorizontal: Spacing.two,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  debtBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#f59e0b',
+  },
+  debtCard: {
+    borderRadius: Spacing.three,
+    borderWidth: 1,
+    borderColor: 'rgba(245,158,11,0.25)',
+    backgroundColor: 'rgba(245,158,11,0.04)',
+    overflow: 'hidden',
+  },
+  debtRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two + 2,
+    gap: Spacing.two,
+  },
+  debtRowDivider: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(128,128,128,0.15)',
+  },
+  debtRowLeft: {
+    flex: 1,
+    gap: 2,
+  },
+  debtDesc: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  debtDate: {
+    fontSize: 12,
+    opacity: 0.7,
+  },
+  debtValue: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  debtTotalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(128,128,128,0.2)',
+    backgroundColor: 'rgba(128,128,128,0.04)',
+  },
+  debtTotalValue: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+
   topProductsBox: { borderRadius: Spacing.three, padding: Spacing.three, gap: Spacing.one, borderWidth: 1, borderColor: 'rgba(128,128,128,0.2)' },
   topProductItem: { fontSize: 15, lineHeight: 24, fontWeight: '500' },
+
+  pendingBillCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: Spacing.three,
+    padding: Spacing.three,
+    borderWidth: 1,
+    borderColor: 'rgba(128,128,128,0.2)',
+  },
+  pendingBillLeft: {
+    flex: 1,
+    gap: Spacing.half,
+  },
+  pendingBillLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  pendingBillCount: {
+    fontSize: 12,
+  },
+  pendingBillValue: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
   emptyText: { fontSize: 13, lineHeight: 18, opacity: 0.5 },
 
   fab: {

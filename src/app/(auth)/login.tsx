@@ -1,16 +1,13 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import {
   View,
   TextInput,
   StyleSheet,
   Pressable,
   KeyboardAvoidingView,
-  Platform,
   ActivityIndicator,
 } from 'react-native'
 import { Link, useRouter } from 'expo-router'
-import * as Google from 'expo-auth-session/providers/google'
-import { Ionicons } from '@expo/vector-icons'
 
 import { ThemedText } from '@/components/themed-text'
 import { ThemedView } from '@/components/themed-view'
@@ -23,27 +20,9 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const { signIn, signInWithGoogle } = useAuth()
+  const { signIn } = useAuth()
   const colors = useTheme()
   const router = useRouter()
-
-  const [, googleResponse, googlePrompt] = Google.useIdTokenAuthRequest({
-    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-  })
-
-  useEffect(() => {
-    if (googleResponse?.type === 'success') {
-      const { id_token } = googleResponse.params
-      setSubmitting(true)
-      setError('')
-      signInWithGoogle(id_token)
-        .then(() => router.replace('/'))
-        .catch((e: any) => setError(e.message || 'Erro ao entrar com Google.'))
-        .finally(() => setSubmitting(false))
-    }
-  }, [googleResponse])
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
@@ -65,7 +44,7 @@ export default function LoginScreen() {
   return (
     <ThemedView style={styles.container}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior="padding"
         style={styles.inner}
       >
         <View style={styles.header}>
@@ -133,29 +112,6 @@ export default function LoginScreen() {
               </ThemedText>
             )}
           </Pressable>
-
-          <View style={styles.divider}>
-            <View style={[styles.dividerLine, { backgroundColor: colors.textSecondary }]} />
-            <ThemedText type="small" themeColor="textSecondary" style={styles.dividerText}>
-              ou
-            </ThemedText>
-            <View style={[styles.dividerLine, { backgroundColor: colors.textSecondary }]} />
-          </View>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.googleButton,
-              { borderColor: colors.textSecondary },
-              pressed && { opacity: 0.7 },
-            ]}
-            onPress={() => googlePrompt()}
-            disabled={submitting}
-          >
-            <Ionicons name="logo-google" size={20} color={colors.text} />
-            <ThemedText type="default" style={styles.googleButtonText}>
-              Entrar com Google
-            </ThemedText>
-          </Pressable>
         </View>
 
         <View style={styles.footer}>
@@ -221,30 +177,6 @@ const styles = StyleSheet.create({
   buttonText: {
     color: '#ffffff',
     fontWeight: '600',
-  },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.three,
-  },
-  dividerLine: {
-    flex: 1,
-    height: StyleSheet.hairlineWidth,
-  },
-  dividerText: {
-    textTransform: 'uppercase',
-  },
-  googleButton: {
-    height: 50,
-    borderRadius: Spacing.two,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: Spacing.two,
-  },
-  googleButtonText: {
-    fontWeight: '500',
   },
   footer: {
     flexDirection: 'row',

@@ -5,13 +5,14 @@ import { View, StyleSheet } from 'react-native';
 
 import { AuthProvider } from '@/contexts/auth';
 import { ThemeProvider as AppThemeProvider } from '@/contexts/theme';
+import { PremiumProvider } from '@/contexts/premium';
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import Header from '@/components/header';
 import Sidebar from '@/components/sidebar';
 
 SplashScreen.preventAutoHideAsync();
 
-const hideHeaderRoutes = new Set(['/login', '/signup', '/perfil', '/produto-detalhe', '/cliente-detalhe', '/nova-venda', '/financeiro-detalhe', '/adicionar-documento-fiscal', '/escanear-qr-fiscal', '/desossa-detalhe', '/termos-de-uso', '/politica-privacidade', '/sobre-o-app', '/assinatura-info', '/cortes'])
+const hideHeaderRoutes = new Set(['/login', '/signup', '/perfil', '/produto-detalhe', '/cliente-detalhe', '/nova-venda', '/venda-sucesso', '/financeiro-detalhe', '/adicionar-documento-fiscal', '/escanear-qr-fiscal', '/termos-de-uso', '/politica-privacidade', '/sobre-o-app', '/assinatura-info', '/receita-detalhe', '/receita-form', '/material-detalhe', '/material-form', '/materiais', '/receitas'])
 
 const routeTitles: Record<string, string> = {
   'index': 'GestFacil',
@@ -19,16 +20,18 @@ const routeTitles: Record<string, string> = {
   'vendas': 'Vendas',
   'caixa': 'Caixa',
   'financeiro': 'Financeiro',
+  'receitas': 'Receitas',
+  'materiais': 'Materiais',
+  'material-detalhe': 'Material',
   'clientes': 'Clientes',
   'configuracao': 'Configuração',
-  'cortes': 'Cortes',
   'relatorios': 'Relatórios',
   'arquivos-fiscais': 'Arquivos Fiscais',
   'assinatura': 'Assinatura',
   'assinatura-info': 'Assinatura',
+  'banco': 'Banco',
   'sobre-o-app': 'Sobre o App',
   'termos-de-uso': 'Termos de Uso',
-  'desossa-detalhe': 'Detalhes da Desossa',
   'politica-privacidade': 'Política de Privacidade',
   'pagamentos': 'Pagamentos',
   'nova-venda': 'Nova Venda',
@@ -65,7 +68,9 @@ function RootLayoutInner() {
 export default function RootLayout() {
   return (
     <AuthProvider>
-      <RootLayoutInner />
+      <PremiumProvider>
+        <RootLayoutInner />
+      </PremiumProvider>
     </AuthProvider>
   );
 }

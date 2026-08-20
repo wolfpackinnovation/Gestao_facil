@@ -2,6 +2,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
+import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -53,9 +54,12 @@ export default function SobreAppScreen() {
           </ThemedView>
 
           <ThemedView style={[styles.card, { backgroundColor: theme.backgroundElement }]}>
-            <ThemedText style={styles.cardTitle}>
-              📦 Recursos
-            </ThemedText>
+            <View style={styles.cardTitleRow}>
+              <Ionicons name="cube" size={20} color={theme.textSecondary} />
+              <ThemedText style={styles.cardTitle}>
+                Recursos
+              </ThemedText>
+            </View>
 
             <ThemedText style={styles.item}>• Controle de estoque</ThemedText>
             <ThemedText style={styles.item}>• Registro de vendas</ThemedText>
@@ -68,9 +72,12 @@ export default function SobreAppScreen() {
           </ThemedView>
 
           <ThemedView style={[styles.card, { backgroundColor: theme.backgroundElement }]}>
-            <ThemedText style={styles.cardTitle}>
-              ⚡ Tecnologia
-            </ThemedText>
+            <View style={styles.cardTitleRow}>
+              <Ionicons name="flash" size={20} color={theme.textSecondary} />
+              <ThemedText style={styles.cardTitle}>
+                Tecnologia
+              </ThemedText>
+            </View>
 
             <ThemedText style={styles.item}>React Native</ThemedText>
             <ThemedText style={styles.item}>Firebase</ThemedText>
@@ -171,6 +178,11 @@ const styles = StyleSheet.create({
     padding: 20,
     marginBottom: 16,
     gap: 12,
+  },
+  cardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
   },
   cardTitle: {
     fontSize: 18,

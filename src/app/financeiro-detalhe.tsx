@@ -140,7 +140,7 @@ export default function FinanceiroDetalheScreen() {
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <ThemedView style={styles.backRow}>
-            <Pressable onPress={() => router.navigate('/(tabs)/financeiro' as any)} style={styles.backButton}>
+            <Pressable onPress={() => router.navigate('/financeiro' as any)} style={styles.backButton}>
             <SymbolView
               tintColor={theme.text}
               name={{ ios: 'chevron.left', android: 'arrow_back', web: 'arrow_back' }}

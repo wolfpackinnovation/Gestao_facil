@@ -17,7 +17,7 @@ import {
 } from './lote-service'
 import type { Lote } from '@/types/schema'
 
-export type UnidadeMedida = 'un' | 'kg' | 'g' | 'L' | 'mL'
+export type UnidadeMedida = 'un' | 'kg' | 'g' | 'litro' | 'mL'
 
 export interface Produto {
   id: string
@@ -121,19 +121,18 @@ export async function getTodosLotesDoProduto(productId: string): Promise<Lote[]>
 }
 
 export const CATEGORIAS = [
-  'Carnes',
-  'Aves',
-  'Peixes',
-  'Vegetais',
-  'Laticínios',
+  'Doces',
+  'Sobremesas',
+  'Alimentos',
+  'Proteínas',
   'Bebidas',
-  'Secos',
-  'Limpeza',
   'Embalagens',
+  'Insumos',
+  'Limpeza',
   'Outros',
 ];
 
-export const UNIDADES: UnidadeMedida[] = ['un', 'kg', 'g', 'L', 'mL'];
+export const UNIDADES: UnidadeMedida[] = ['un', 'kg', 'g', 'litro', 'mL'];
 
 export function formatCurrency(value: number): string {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -149,3 +148,18 @@ export {
 }
 
 export type { ConsumoFEFO, ResultadoConsumo, Lote }
+
+export type StockStatus = 'out' | 'low' | 'ok'
+
+export function getStockStatus(product: Produto): StockStatus {
+  const estoque = product.estoqueAtual ?? 0
+  if (estoque <= 0) return 'out'
+  if (estoque <= 1) return 'low'
+  return 'ok'
+}
+
+export interface StockIssue {
+  product: Produto
+  status: Exclude<StockStatus, 'ok'>
+  estoqueAtual: number
+}

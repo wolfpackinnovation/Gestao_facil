@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   Alert,
+  Clipboard,
   Dimensions,
   FlatList,
   KeyboardAvoidingView,
@@ -10,21 +11,26 @@ import {
   ScrollView,
   StyleSheet,
   TextInput,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { formatCurrencyInput, parseCurrencyInput } from '@/utils/format';
+import { buildPixBrCode } from '@/utils/pix';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/contexts/auth';
 import * as SaleService from '@/services/sale-service';
 import * as ClientService from '@/services/client-service';
-import { getProdutos, type Produto } from '@/services/estoque-storage';
+import { getProdutos, getStockStatus, type Produto, type StockIssue } from '@/services/estoque-storage';
 import { consumirEstoqueFEFO, reverterConsumo, type ConsumoFEFO } from '@/services/lote-service';
+import { getCompanyInfo, type CompanyInfo } from '@/services/settings-service';
 import type { Client } from '@/types/schema';
+import QRCode from 'react-native-qrcode-svg';
 
 function formatCurrency(value: number): string {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -63,11 +69,23 @@ export default function NovaVendaScreen() {
   const [quantityModalProduct, setQuantityModalProduct] = useState<Produto | null>(null);
   const [quantityInput, setQuantityInput] = useState('');
   const [descontoText, setDescontoText] = useState('');
+  const [jurosText, setJurosText] = useState('');
+  const [pixKey, setPixKey] = useState('');
+  const [pixKeyType, setPixKeyType] = useState<CompanyInfo['pixKeyType']>('cpf');
+  const [pixMerchantName, setPixMerchantName] = useState('');
+  const [pixMerchantCity, setPixMerchantCity] = useState('');
+  const [showQrModal, setShowQrModal] = useState(false);
 
   useEffect(() => {
     if (!companyId) return;
     getProdutos(companyId).then(setProducts);
     ClientService.listAllClients().then(setClients);
+    getCompanyInfo(companyId).then((info) => {
+      setPixKey(info.pixKey ?? '');
+      setPixKeyType(info.pixKeyType ?? 'cpf');
+      setPixMerchantName(info.name ?? '');
+      setPixMerchantCity((info as any).pixCity ?? '');
+    });
   }, [companyId]);
 
   function handleProductPress(product: Produto) {
@@ -101,7 +119,7 @@ export default function NovaVendaScreen() {
   }
 
   const qtyValue = parseFloat(quantityInput.replace(',', '.')) || 0;
-  const subtotalValue = quantityModalProduct ? qtyValue * quantityModalProduct.custo : 0;
+  const subtotalValue = quantityModalProduct ? qtyValue * quantityModalProduct.precoVenda : 0;
 
   function addProductToCart(product: Produto, qty: number) {
     const existing = cart.find((c) => c.productId === product.id);
@@ -126,8 +144,8 @@ export default function NovaVendaScreen() {
           productId: product.id,
           productName: product.nome,
           quantity: qty,
-          unitPrice: product.custo,
-          subtotal: qty * product.custo,
+          unitPrice: product.precoVenda,
+          subtotal: qty * product.precoVenda,
         },
         ...prev,
       ]);
@@ -158,6 +176,9 @@ export default function NovaVendaScreen() {
   const totalCart = cart.reduce((sum, item) => sum + item.subtotal, 0);
   const desconto = parseCurrencyInput(descontoText);
   const totalComDesconto = totalCart - desconto;
+  const jurosPercent = Number(jurosText.replace(',', '.')) || 0;
+  const jurosValor = totalComDesconto * (jurosPercent / 100);
+  const totalFinal = totalComDesconto + jurosValor;
 
   function goBack() {
     if (from) {
@@ -188,8 +209,9 @@ export default function NovaVendaScreen() {
     const saleData: any = {
       companyId,
       number: generateSaleNumber(),
-      totalAmount: totalComDesconto,
+      totalAmount: totalFinal,
       desconto,
+      juros: jurosPercent > 0 ? jurosPercent : undefined,
       paymentMethod,
       status: paymentMethod === 'fiado' ? 'pendente' : 'concluída',
     };
@@ -232,12 +254,46 @@ export default function NovaVendaScreen() {
       }
 
       if (!erroEstoque) {
-        Alert.alert('Venda registrada', `Venda ${saleData.number} concluída com sucesso!`);
+        const updatedProducts = await getProdutos(companyId);
+        const issues: StockIssue[] = []
+        for (const item of cart) {
+          const updated = updatedProducts.find((p) => p.id === item.productId);
+          if (!updated) continue;
+          const status = getStockStatus(updated);
+          if (status !== 'ok') {
+            issues.push({
+              product: updated,
+              status,
+              estoqueAtual: updated.estoqueAtual ?? 0,
+            });
+          }
+        }
+
+        const issueData = issues.map((i) => ({
+          name: i.product.nome,
+          unit: i.product.unidade,
+          estoqueAtual: i.estoqueAtual,
+          status: i.status,
+        }));
+
+        router.dismissAll();
+        router.push({
+          pathname: '/venda-sucesso',
+          params: {
+            number: saleData.number,
+            total: totalFinal.toString(),
+            paymentMethod,
+            itemsCount: String(items.length),
+            issues: JSON.stringify(issueData),
+            from: from ?? '/(tabs)/vendas',
+          },
+        });
+        return;
       }
     } catch (e: any) {
       Alert.alert('Erro', e?.message ?? 'Erro ao registrar venda.');
+      goBack();
     }
-    goBack();
   }
 
   const filteredProducts = productSearch
@@ -316,7 +372,10 @@ export default function NovaVendaScreen() {
               {['dinheiro', 'cartão', 'pix', 'fiado'].map((method) => (
                 <Pressable
                   key={method}
-                  onPress={() => setPaymentMethod(method)}
+                  onPress={() => {
+                    setPaymentMethod(method);
+                    if (method !== 'fiado') setJurosText('');
+                  }}
                   style={[
                     styles.chip,
                     { backgroundColor: paymentMethod === method ? theme.primary : theme.backgroundElement },
@@ -349,6 +408,23 @@ export default function NovaVendaScreen() {
             </ThemedView>
           )}
 
+          {paymentMethod === 'fiado' && (
+            <ThemedView style={styles.descontoRow}>
+              <ThemedText style={styles.descontoLabel}>Juros (%)</ThemedText>
+              <View style={[styles.jurosInputWrapper, { backgroundColor: theme.backgroundElement }]}>
+                <TextInput
+                  style={[styles.jurosInput, { color: theme.text }]}
+                  placeholder="0"
+                  placeholderTextColor={theme.textSecondary}
+                  keyboardType="decimal-pad"
+                  value={jurosText}
+                  onChangeText={(t) => setJurosText(t.replace(/[^0-9.,]/g, ''))}
+                />
+                <ThemedText style={[styles.jurosSuffix, { color: theme.textSecondary }]}>%</ThemedText>
+              </View>
+            </ThemedView>
+          )}
+
           {/* Desconto */}
           <ThemedView style={styles.descontoRow}>
             <ThemedText style={styles.descontoLabel}>Desconto</ThemedText>
@@ -365,8 +441,36 @@ export default function NovaVendaScreen() {
           {/* Total */}
           <ThemedView style={styles.totalRow}>
             <ThemedText style={styles.totalLabel}>Total</ThemedText>
-            <ThemedText style={styles.totalValue}>{formatCurrency(cart.length > 0 ? totalComDesconto : 0)}</ThemedText>
+            <ThemedText style={styles.totalValue}>{formatCurrency(cart.length > 0 ? totalFinal : 0)}</ThemedText>
           </ThemedView>
+
+          {paymentMethod === 'fiado' && jurosPercent > 0 && (
+            <ThemedView style={styles.totalRow}>
+              <ThemedText type="small" themeColor="textSecondary">Total com juros ({jurosPercent}%)</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">{formatCurrency(totalFinal)}</ThemedText>
+            </ThemedView>
+          )}
+
+          {paymentMethod === 'pix' && cart.length > 0 && (
+            <Pressable
+              onPress={() => {
+                if (!pixKey) {
+                  Alert.alert(
+                    'Chave PIX não cadastrada',
+                    'Cadastre sua chave PIX na tela Banco (menu lateral) para gerar o QR Code.',
+                  );
+                  return;
+                }
+                setShowQrModal(true);
+              }}
+              style={[styles.qrButton, { backgroundColor: theme.backgroundElement }]}
+            >
+              <Ionicons name="qr-code" size={20} color={theme.text} />
+              <ThemedText style={{ fontWeight: '600', marginLeft: Spacing.one }}>
+                Gerar QR Code PIX
+              </ThemedText>
+            </Pressable>
+          )}
 
           <Pressable
             onPress={finishSale}
@@ -414,7 +518,7 @@ export default function NovaVendaScreen() {
                       {item.unidade} - Estoque: {item.estoqueAtual}
                     </ThemedText>
                   </ThemedView>
-                  <ThemedText style={{ fontWeight: '700' }}>{formatCurrency(item.custo)}</ThemedText>
+                  <ThemedText style={{ fontWeight: '700' }}>{formatCurrency(item.precoVenda)}</ThemedText>
                 </Pressable>
               )}
               ListEmptyComponent={
@@ -445,7 +549,7 @@ export default function NovaVendaScreen() {
                 Estoque disponível: <ThemedText type="smallBold">{quantityModalProduct?.estoqueAtual} {quantityModalProduct?.unidade}</ThemedText>
               </ThemedText>
               <ThemedText type="small" themeColor="textSecondary">
-                {formatCurrency(quantityModalProduct?.custo ?? 0)} / {quantityModalProduct?.unidade}
+                {formatCurrency(quantityModalProduct?.precoVenda ?? 0)} / {quantityModalProduct?.unidade}
               </ThemedText>
             </ThemedView>
 
@@ -523,6 +627,91 @@ export default function NovaVendaScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* QR Code PIX Modal */}
+      <Modal visible={showQrModal} transparent animationType="fade" onRequestClose={() => setShowQrModal(false)}>
+        <Pressable style={styles.qrOverlay} onPress={() => setShowQrModal(false)}>
+          <Pressable style={[styles.qrSheet, { backgroundColor: theme.background }]} onPress={(e) => e.stopPropagation()}>
+            <ThemedView style={styles.qrHeader}>
+              <ThemedText type="subtitle" style={{ flex: 1 }}>QR Code PIX</ThemedText>
+              <Pressable onPress={() => setShowQrModal(false)}>
+                <Ionicons name="close" size={24} color={theme.text} />
+              </Pressable>
+            </ThemedView>
+
+            <ThemedView style={styles.qrAmountRow}>
+              <ThemedText type="small" themeColor="textSecondary">Valor</ThemedText>
+              <ThemedText style={styles.qrAmountValue}>{formatCurrency(totalFinal)}</ThemedText>
+            </ThemedView>
+
+            <ThemedView style={styles.qrCodeWrapper}>
+              <QRCode
+                value={buildPixBrCode({
+                  pixKey,
+                  pixKeyType,
+                  amount: totalFinal,
+                  merchantName: pixMerchantName,
+                  merchantCity: pixMerchantCity,
+                  txid: '***',
+                })}
+                size={240}
+                backgroundColor="#ffffff"
+                color="#000000"
+                quietZone={10}
+                ecl="M"
+              />
+            </ThemedView>
+
+            <ThemedText type="small" themeColor="textSecondary" style={styles.qrHint}>
+              Escaneie o QR Code no app do seu banco para pagar.
+            </ThemedText>
+
+            <ThemedView style={styles.qrPayloadBox}>
+              <View style={styles.qrPayloadHeader}>
+                <ThemedText type="smallBold" themeColor="textSecondary">Pix Copia e Cola</ThemedText>
+                <Pressable
+                  onPress={() => {
+                    const payload = buildPixBrCode({
+                      pixKey,
+                      pixKeyType,
+                      amount: totalFinal,
+                      merchantName: pixMerchantName,
+                      merchantCity: pixMerchantCity,
+                      txid: '***',
+                    })
+                    Clipboard.setString(payload)
+                    Alert.alert('Copiado', 'Código PIX copiado para a área de transferência.')
+                  }}
+                  style={styles.qrCopyButton}
+                >
+                  <Ionicons name="copy-outline" size={14} color={theme.primary} />
+                  <ThemedText type="small" style={{ color: theme.primary, marginLeft: 4, fontWeight: '600' }}>Copiar</ThemedText>
+                </Pressable>
+              </View>
+              <ThemedText type="small" style={styles.qrPayloadText} selectable>
+                {buildPixBrCode({
+                  pixKey,
+                  pixKeyType,
+                  amount: totalFinal,
+                  merchantName: pixMerchantName,
+                  merchantCity: pixMerchantCity,
+                  txid: '***',
+                })}
+              </ThemedText>
+            </ThemedView>
+
+            <Pressable
+              onPress={finishSale}
+              style={[styles.qrConfirmButton, { backgroundColor: '#22c55e' }]}
+            >
+              <Ionicons name="checkmark-circle" size={20} color="#fff" />
+              <ThemedText style={styles.qrConfirmButtonText}>
+                Confirmar recebimento
+              </ThemedText>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </ThemedView>
   );
 }
@@ -551,6 +740,47 @@ const styles = StyleSheet.create({
   descontoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: Spacing.two },
   descontoLabel: { fontSize: 16, fontWeight: '500' },
   descontoInput: { borderRadius: Spacing.two, paddingHorizontal: Spacing.three, paddingVertical: Platform.OS === 'ios' ? Spacing.three : Spacing.two, fontSize: 18, textAlign: 'right', minWidth: 140 },
+  jurosInputWrapper: { flexDirection: 'row', alignItems: 'center', borderRadius: Spacing.two, paddingHorizontal: Spacing.three, paddingVertical: Platform.OS === 'ios' ? Spacing.three : Spacing.two, minWidth: 140 },
+  jurosInput: { flex: 1, fontSize: 18, textAlign: 'right', padding: 0 },
+  jurosSuffix: { fontSize: 18, fontWeight: '600', marginLeft: Spacing.one },
+  qrButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.three,
+    borderRadius: Spacing.two,
+    marginTop: Spacing.two,
+  },
+  qrOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: Spacing.four },
+  qrSheet: { width: '100%', maxWidth: 360, borderRadius: Spacing.three, padding: Spacing.four, gap: Spacing.three },
+  qrHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  qrAmountRow: { alignItems: 'center', gap: Spacing.half, paddingVertical: Spacing.two },
+  qrAmountValue: { fontSize: 28, fontWeight: '700' },
+  qrCodeWrapper: { alignItems: 'center', paddingVertical: Spacing.two },
+  qrHint: { textAlign: 'center' },
+  qrPayloadBox: {
+    padding: Spacing.three,
+    borderRadius: Spacing.two,
+    borderWidth: 1,
+    borderColor: 'rgba(128,128,128,0.2)',
+    gap: Spacing.one,
+  },
+  qrPayloadHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  qrCopyButton: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4, paddingHorizontal: 8 },
+  qrPayloadText: { fontSize: 11, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', lineHeight: 14 },
+  qrConfirmButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.three,
+    borderRadius: Spacing.two,
+    gap: Spacing.one,
+  },
+  qrConfirmButtonText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 15,
+  },
   bottomArea: { gap: Spacing.two, paddingTop: Spacing.two, paddingBottom: BottomTabInset, borderTopWidth: 1, borderTopColor: 'rgba(128,128,128,0.15)' },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: Spacing.three, borderTopWidth: 2, borderTopColor: 'rgba(128,128,128,0.2)', marginTop: Spacing.two },
   totalLabel: { fontSize: 20, fontWeight: '600' },

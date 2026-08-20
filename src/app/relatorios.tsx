@@ -12,6 +12,7 @@ import { PieChart } from '@/components/pie-chart';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/contexts/auth';
+import { PremiumGate } from '@/components/premium-gate';
 import { getSalesByDate } from '@/services/sale-service';
 import { getDespesas } from '@/services/despesa-service';
 import { listClients } from '@/services/client-service';
@@ -152,7 +153,7 @@ export default function RelatoriosScreen() {
   }, [despesasPeriodo]);
 
   const lowStockProducts = useMemo(
-    () => products.filter((p: any) => p.estoqueAtual <= p.estoqueMinimo),
+    () => products.filter((p: any) => p.estoqueAtual > 0 && p.estoqueAtual <= 1),
     [products],
   );
 
@@ -187,11 +188,12 @@ export default function RelatoriosScreen() {
   }
 
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
+    <PremiumGate>
+      <ThemedView style={styles.container}>
+        <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.scrollContent}
         >
 
 
@@ -361,6 +363,7 @@ export default function RelatoriosScreen() {
         </ScrollView>
       </SafeAreaView>
     </ThemedView>
+    </PremiumGate>
   );
 }
 

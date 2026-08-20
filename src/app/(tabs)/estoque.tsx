@@ -21,6 +21,8 @@ import { Loading } from '@/utils/loading';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/contexts/auth';
+import { usePremium } from '@/contexts/premium';
+import { PremiumModal } from '@/components/premium-modal';
 import {
   getProdutos,
   saveProduto,
@@ -43,15 +45,9 @@ const produtoEmptyForm = {
   nome: '',
   categoria: CATEGORIAS[0],
   unidade: 'un' as UnidadeMedida,
-  quantidade: '1',
-  margemLucro: '',
-  quebra: '',
   precoVenda: '',
-  estoqueMinimo: '',
-  custoInicial: '',
-  dataValidadeInicial: '',
-  fornecedorInicial: '',
   quantidadeInicial: '',
+  dataValidadeInicial: '',
 };
 
 const loteEmptyForm = {
@@ -74,6 +70,7 @@ export default function EstoqueScreen() {
   const router = useRouter();
   const { editId } = useLocalSearchParams<{ editId: string }>();
   const { user } = useAuth();
+  const { checkLimits } = usePremium();
   const companyId = user?.uid ?? '';
   const editTriggered = useRef(false);
   const [produtos, setProdutos] = useState<Produto[]>([]);
@@ -89,6 +86,7 @@ export default function EstoqueScreen() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('todos');
+  const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [stockFilter, setStockFilter] = useState('todos');
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
@@ -101,7 +99,7 @@ export default function EstoqueScreen() {
   const [selectedLoteId, setSelectedLoteId] = useState<string | null>(null);
   const [movementQty, setMovementQty] = useState('');
 
-  const isLowStock = (p: Produto) => p.estoqueMinimo > 0 && (p.estoqueAtual ?? 0) <= p.estoqueMinimo;
+  const isLowStock = (p: Produto) => (p.estoqueAtual ?? 0) > 0 && (p.estoqueAtual ?? 0) <= 1;
   const isExpiringSoon = (p: Produto) => {
     if (!p.proximaValidade) return false;
     const [d, m, y] = p.proximaValidade.split('/').map(Number);
@@ -158,11 +156,17 @@ export default function EstoqueScreen() {
   useFocusEffect(
     useCallback(() => {
       editTriggered.current = false;
+      checkLimits();
       loadProdutos();
-    }, [loadProdutos])
+    }, [loadProdutos, checkLimits])
   );
 
-  function openNew() {
+  async function openNew() {
+    const limits = await checkLimits();
+    if (!limits.canAddInventory) {
+      setShowPremiumModal(true);
+      return;
+    }
     const nextCode = 'P' + String(produtos.length + 1).padStart(3, '0');
     setEditingId(null);
     setForm({ ...produtoEmptyForm, codigo: nextCode });
@@ -177,15 +181,9 @@ export default function EstoqueScreen() {
       nome: produto.nome,
       categoria: produto.categoria,
       unidade: produto.unidade,
-      quantidade: (produto.quantidade ?? 1).toString(),
-      margemLucro: '',
-      quebra: '',
       precoVenda: Math.round(produto.precoVenda * 100).toString(),
-      estoqueMinimo: produto.estoqueMinimo.toString(),
-      custoInicial: '',
-      dataValidadeInicial: '',
-      fornecedorInicial: '',
       quantidadeInicial: '',
+      dataValidadeInicial: '',
     });
     setErrors({});
     setProdutoModalVisible(true);
@@ -209,41 +207,15 @@ export default function EstoqueScreen() {
   function validateProduto(): boolean {
     const newErrors: Record<string, string> = {};
     if (!form.nome.trim()) newErrors.nome = 'Nome é obrigatório';
-    if (editingId) {
-      if (!form.quantidade || isNaN(Number(form.quantidade)) || Number(form.quantidade) <= 0)
-        newErrors.quantidade = 'Informe uma quantidade válida';
-    }
-    if (form.margemLucro && (isNaN(Number(form.margemLucro)) || Number(form.margemLucro) < 0))
-      newErrors.margemLucro = 'Valor inválido';
-    if (form.quebra && (isNaN(Number(form.quebra)) || Number(form.quebra) < 0))
-      newErrors.quebra = 'Valor inválido';
-    if (form.precoVenda && (isNaN(Number(form.precoVenda)) || Number(form.precoVenda) < 0))
-      newErrors.precoVenda = 'Valor inválido';
-    if (!form.margemLucro && !form.precoVenda)
-      newErrors.precoVenda = 'Informe a margem ou o preço de venda';
-    if (!form.estoqueMinimo || isNaN(Number(form.estoqueMinimo)) || Number(form.estoqueMinimo) < 0)
-      newErrors.estoqueMinimo = 'Informe o estoque mínimo';
-
-    if (!editingId) {
-      if (!form.custoInicial || isNaN(Number(form.custoInicial)) || Number(form.custoInicial) <= 0)
-        newErrors.custoInicial = 'Informe o custo do lote';
-      if (!form.quantidadeInicial || isNaN(Number(form.quantidadeInicial)) || Number(form.quantidadeInicial) <= 0)
-        newErrors.quantidadeInicial = 'Informe a quantidade';
-      if (!form.dataValidadeInicial.match(/^\d{2}\/\d{2}\/\d{4}$/))
-        newErrors.dataValidadeInicial = 'Use o formato DD/MM/AAAA';
-    }
+    if (!form.precoVenda || isNaN(Number(form.precoVenda)) || Number(form.precoVenda) <= 0)
+      newErrors.precoVenda = 'Informe o preço de venda';
+    if (!form.quantidadeInicial || isNaN(Number(form.quantidadeInicial)) || Number(form.quantidadeInicial) <= 0)
+      newErrors.quantidadeInicial = 'Informe a quantidade';
+    if (!form.dataValidadeInicial.match(/^\d{2}\/\d{2}\/\d{4}$/))
+      newErrors.dataValidadeInicial = 'Use o formato DD/MM/AAAA';
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
-  }
-
-  function calcPrecoVenda(): number {
-    const custo = Number(form.custoInicial) / 100;
-    const margem = Number(form.margemLucro) || 0;
-    const quebra = Number(form.quebra) || 0;
-    if (!custo || custo <= 0) return 0;
-    const custoAjustado = custo * (1 + quebra / 100);
-    return custoAjustado * (1 + margem / 100);
   }
 
   async function handleSaveProduto() {
@@ -258,12 +230,12 @@ export default function EstoqueScreen() {
       nome: form.nome.trim(),
       categoria: form.categoria,
       unidade: form.unidade,
-      quantidade: isNew ? 1 : Number(form.quantidade),
-      custo: form.custoInicial ? Number(form.custoInicial) / 100 : (existing?.custo ?? 0),
-      precoVenda: form.precoVenda ? Number(form.precoVenda) / 100 : calcPrecoVenda(),
-      estoqueMinimo: Number(form.estoqueMinimo) || 0,
+      quantidade: existing?.quantidade ?? 1,
+      custo: existing?.custo ?? 0,
+      precoVenda: Number(form.precoVenda) / 100,
+      estoqueMinimo: existing?.estoqueMinimo ?? 0,
       dataValidade: form.dataValidadeInicial || existing?.dataValidade || '',
-      fornecedor: form.fornecedorInicial.trim() || existing?.fornecedor || '',
+      fornecedor: existing?.fornecedor ?? '',
       createdAt: existing?.createdAt ?? new Date().toISOString(),
     };
     await saveProduto(produto);
@@ -277,10 +249,10 @@ export default function EstoqueScreen() {
         productId: id,
         codigo: codigoLote,
         quantidadeInicial: Number(form.quantidadeInicial),
-        custoUnitario: Number(form.custoInicial) / 100,
+        custoUnitario: 0,
         dataValidade: form.dataValidadeInicial,
         dataEntrada: todayBR(),
-        fornecedor: form.fornecedorInicial.trim(),
+        fornecedor: '',
         origem: 'cadastro-inicial',
       });
     }
@@ -484,7 +456,7 @@ export default function EstoqueScreen() {
             <ThemedView style={styles.cardInfoItem}>
               <ThemedText style={styles.cardInfoLabel}>Validade</ThemedText>
               <ThemedText style={styles.cardInfoValue}>
-                {item.proximaValidade || '---'}
+                {item.proximaValidade || item.dataValidade || '---'}
               </ThemedText>
               {isExpired(item) && (
                 <ThemedText type="small" style={{ color: '#ef4444' }}>
@@ -696,7 +668,7 @@ export default function EstoqueScreen() {
               <ThemedView>
                 <ThemedView style={styles.header}>
                   <ThemedText type="title" style={styles.headerTitle}>
-                    📦 Estoque
+                    Estoque
                   </ThemedText>
                   <Pressable onPress={openNew} style={styles.addButton}>
                     <ThemedText style={styles.addButtonText}>+ Novo</ThemedText>
@@ -768,7 +740,7 @@ export default function EstoqueScreen() {
             }
             ListEmptyComponent={
               <ThemedView style={styles.emptyState}>
-                <ThemedText style={styles.emptyEmoji}>📋</ThemedText>
+                <Ionicons name="clipboard" size={48} color={theme.textSecondary} />
                 <ThemedText type="subtitle" style={styles.emptyTitle}>
                   {categoryFilter || stockFilter !== 'todos' || searchQuery ? 'Nenhum resultado' : 'Nenhum produto'}
                 </ThemedText>
@@ -812,7 +784,7 @@ export default function EstoqueScreen() {
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
-              {renderInput('Nome do Produto *', 'nome', { placeholder: 'Ex: Picanha' })}
+              {renderInput('Nome do Produto *', 'nome', { placeholder: 'Ex: Brigadeiro' })}
 
               <ThemedView style={styles.fieldGroup}>
                 <ThemedText type="smallBold" style={styles.fieldLabel}>
@@ -874,118 +846,59 @@ export default function EstoqueScreen() {
                 </ThemedView>
               </ThemedView>
 
-              {!editingId ? null : renderInput('Unidades por Embalagem *', 'quantidade', {
-                keyboardType: 'decimal-pad',
-                placeholder: 'Ex: 1 (quantas unidades tem em 1 embalagem)',
-                numeric: true,
-              })}
-
-              {!editingId && (
-                <ThemedView style={styles.loteBox}>
-                  <ThemedText type="smallBold" style={styles.loteBoxTitle}>
-                    📦 Primeiro Lote (entrada de estoque)
-                  </ThemedText>
-
-                  <ThemedView style={styles.rowFields}>
-                    <ThemedView style={styles.halfField}>
-                      {renderInput('Quantidade *', 'quantidadeInicial', {
-                        keyboardType: 'decimal-pad',
-                        placeholder: 'Ex: 10',
-                        numeric: true,
-                      }, 'produto')}
-                    </ThemedView>
-                    <ThemedView style={styles.halfField}>
-                      {renderInput('Custo unitário *', 'custoInicial', {
-                        keyboardType: 'decimal-pad',
-                        placeholder: 'Ex: 45,90',
-                        prefix: 'R$',
-                        type: 'currency',
-                      }, 'produto')}
-                    </ThemedView>
-                  </ThemedView>
-
-                  <ThemedView style={styles.rowFields}>
-                    <ThemedView style={styles.halfField}>
-                      {renderInput('Margem *', 'margemLucro', {
-                        keyboardType: 'decimal-pad',
-                        placeholder: 'Ex: 30',
-                        suffix: '%',
-                        numeric: true,
-                      }, 'produto')}
-                    </ThemedView>
-                    <ThemedView style={styles.halfField}>
-                      {renderInput('Quebra', 'quebra', {
-                        keyboardType: 'decimal-pad',
-                        placeholder: 'Ex: 5',
-                        suffix: '%',
-                        numeric: true,
-                      }, 'produto')}
-                    </ThemedView>
-                  </ThemedView>
-
-                  {renderInput('Preço de Venda *', 'precoVenda', {
-                    keyboardType: 'decimal-pad',
-                    placeholder: 'Ex: 59,90',
-                    prefix: 'R$',
-                    type: 'currency',
-                  }, 'produto')}
-                  <ThemedText type="small" themeColor="textSecondary" style={{ marginTop: -Spacing.three, marginBottom: Spacing.two }}>
-                    Preço sugerido: {formatCurrency(calcPrecoVenda())}
-                  </ThemedText>
-
-                  {renderInput('Data de Validade *', 'dataValidadeInicial', {
-                    placeholder: 'DD/MM/AAAA',
-                    type: 'date',
-                  }, 'produto')}
-
-                  {renderInput('Fornecedor (opcional)', 'fornecedorInicial', {
-                    placeholder: 'Ex: Frigorífico X',
-                  }, 'produto')}
+              <ThemedView style={styles.fieldGroup}>
+                <ThemedView style={styles.labelRow}>
+                  <ThemedText type="smallBold" style={styles.fieldLabel}>Preço de Venda *</ThemedText>
                 </ThemedView>
-              )}
-
-              {editingId && (
-                <>
-                  <ThemedView style={styles.rowFields}>
-                    <ThemedView style={styles.halfField}>
-                      {renderInput('Margem de Lucro', 'margemLucro', {
-                        keyboardType: 'decimal-pad',
-                        placeholder: 'Ex: 30',
-                        suffix: '%',
-                        numeric: true,
-                      })}
-                    </ThemedView>
-                    <ThemedView style={styles.halfField}>
-                      {renderInput('Quebra', 'quebra', {
-                        keyboardType: 'decimal-pad',
-                        placeholder: 'Ex: 5',
-                        suffix: '%',
-                        numeric: true,
-                      })}
-                    </ThemedView>
+                <ThemedView
+                  style={[
+                    styles.inputRow,
+                    {
+                      borderColor: errors['precoVenda'] ? '#ef4444' : theme.textSecondary + '55',
+                      borderWidth: 1,
+                      borderRadius: Spacing.two,
+                    },
+                  ]}
+                >
+                  <ThemedView
+                    style={[
+                      styles.inputAdornment,
+                      {
+                        backgroundColor: theme.backgroundElement,
+                        borderTopLeftRadius: Spacing.two - 1,
+                        borderBottomLeftRadius: Spacing.two - 1,
+                      },
+                    ]}
+                  >
+                    <ThemedText type="default" themeColor="textSecondary">R$</ThemedText>
                   </ThemedView>
+                  <TextInput
+                    style={[
+                      styles.input,
+                      { color: theme.text, backgroundColor: theme.background, borderWidth: 0 },
+                    ]}
+                    value={formatBRL(form.precoVenda)}
+                    onChangeText={(v) => updateField('precoVenda', v.replace(/\D/g, ''))}
+                    placeholderTextColor={theme.textSecondary}
+                    placeholder="Ex: 59,90"
+                    keyboardType="decimal-pad"
+                  />
+                </ThemedView>
+                {errors['precoVenda'] && (
+                  <ThemedText type="small" style={{ color: '#ef4444' }}>{errors['precoVenda']}</ThemedText>
+                )}
+              </ThemedView>
 
-                  {renderInput('Preço de Venda *', 'precoVenda', {
-                    keyboardType: 'decimal-pad',
-                    placeholder: 'Ex: 59,90',
-                    prefix: 'R$',
-                    type: 'currency',
-                  })}
+              {renderInput('Validade *', 'dataValidadeInicial', {
+                placeholder: 'DD/MM/AAAA',
+                type: 'date',
+              }, 'produto')}
 
-                  <ThemedView type="backgroundElement" style={styles.infoBox}>
-                    <Ionicons name="information-circle" size={18} color={theme.textSecondary} />
-                    <ThemedText type="small" themeColor="textSecondary" style={{ flex: 1 }}>
-                      Estoque, validade e custo são controlados pelos lotes. Cadastre novos lotes para adicionar estoque.
-                    </ThemedText>
-                  </ThemedView>
-                </>
-              )}
-
-              {renderInput('Estoque Mínimo *', 'estoqueMinimo', {
+              {!editingId && renderInput('Quantidade *', 'quantidadeInicial', {
                 keyboardType: 'decimal-pad',
-                placeholder: 'Ex: 5',
+                placeholder: 'Ex: 10',
                 numeric: true,
-              })}
+              }, 'produto')}
 
               <Pressable
                 onPress={handleSaveProduto}
@@ -1152,6 +1065,10 @@ export default function EstoqueScreen() {
           </SafeAreaView>
         </KeyboardAvoidingView>
       </Modal>
+
+      {showPremiumModal && (
+        <PremiumModal type="inventory" onClose={() => setShowPremiumModal(false)} />
+      )}
     </ThemedView>
   );
 }
@@ -1306,9 +1223,6 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
     paddingHorizontal: Spacing.four,
   },
-  emptyEmoji: {
-    fontSize: 48,
-  },
   emptyTitle: {
     textAlign: 'center',
   },
@@ -1349,8 +1263,8 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     paddingHorizontal: Spacing.three,
-    paddingVertical: Platform.OS === 'ios' ? Spacing.three : Spacing.two,
-    fontSize: 16,
+    paddingVertical: Platform.OS === 'ios' ? Spacing.two + 2 : Spacing.two,
+    fontSize: 15,
   },
   inputRow: {
     flexDirection: 'row',
@@ -1358,7 +1272,7 @@ const styles = StyleSheet.create({
   },
   inputAdornment: {
     paddingHorizontal: Spacing.two,
-    paddingVertical: Platform.OS === 'ios' ? Spacing.three : Spacing.two,
+    paddingVertical: Platform.OS === 'ios' ? Spacing.two + 2 : Spacing.two,
   },
   chipsRow: {
     flexDirection: 'row',
@@ -1372,7 +1286,7 @@ const styles = StyleSheet.create({
   },
   rowFields: {
     flexDirection: 'row',
-    gap: Spacing.three,
+    gap: Spacing.two,
   },
   halfField: {
     flex: 1,
@@ -1413,16 +1327,29 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.two,
   },
   loteBox: {
-    backgroundColor: 'rgba(196, 149, 106, 0.08)',
+    backgroundColor: 'rgba(196, 149, 106, 0.05)',
     borderRadius: Spacing.two,
     padding: Spacing.three,
     gap: Spacing.two,
-    borderWidth: 1,
-    borderColor: 'rgba(196, 149, 106, 0.3)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(196, 149, 106, 0.25)',
+  },
+  loteBoxHeader: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.half,
   },
   loteBoxTitle: {
     color: '#C4956A',
-    marginBottom: Spacing.half,
+    fontSize: 13,
+    letterSpacing: 0.3,
+  },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
   },
   toggleRow: {
     flexDirection: 'row',

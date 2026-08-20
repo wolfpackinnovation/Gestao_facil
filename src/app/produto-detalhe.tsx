@@ -343,18 +343,12 @@ export default function ProdutoDetalheScreen() {
             <ThemedView style={styles.infoRow}>
               <ThemedView style={styles.infoBlock}>
                 <ThemedText type="small" themeColor="textSecondary">Estoque Atual</ThemedText>
-                <ThemedText style={[styles.infoValueLarge, (produto.estoqueAtual ?? 0) <= (produto.estoqueMinimo || 0) && { color: '#f59e0b' }]}>
+                <ThemedText style={[styles.infoValueLarge, (produto.estoqueAtual ?? 0) > 0 && (produto.estoqueAtual ?? 0) <= 1 && { color: '#f59e0b' }]}>
                   {formatQuantity(produto.estoqueAtual ?? 0)} <ThemedText type="small" themeColor="textSecondary">{produto.unidade}</ThemedText>
                 </ThemedText>
               </ThemedView>
-              <ThemedView style={styles.infoBlock}>
-                <ThemedText type="small" themeColor="textSecondary">Estoque Mínimo</ThemedText>
-                <ThemedText style={styles.infoValue}>
-                  {formatQuantity(produto.estoqueMinimo)} {produto.unidade}
-                </ThemedText>
-              </ThemedView>
             </ThemedView>
-            {(produto.estoqueMinimo > 0 && (produto.estoqueAtual ?? 0) <= produto.estoqueMinimo) && (
+            {((produto.estoqueAtual ?? 0) > 0 && (produto.estoqueAtual ?? 0) <= 1) && (
               <ThemedView style={styles.badgeWarning}>
                 <Ionicons name="alert-circle" size={14} color="#f59e0b" />
                 <ThemedText type="small" style={styles.badgeWarningText}>Estoque baixo</ThemedText>
@@ -376,10 +370,6 @@ export default function ProdutoDetalheScreen() {
             <ThemedView style={styles.infoDivider} />
             <ThemedView style={styles.infoRow}>
               <ThemedView style={styles.infoBlock}>
-                <ThemedText type="small" themeColor="textSecondary">Embalagem</ThemedText>
-                <ThemedText style={styles.infoValue}>{formatQuantity(produto.quantidade)} {produto.unidade}</ThemedText>
-              </ThemedView>
-              <ThemedView style={styles.infoBlock}>
                 <ThemedText type="small" themeColor="textSecondary">Cadastrado em</ThemedText>
                 <ThemedText style={styles.infoValue}>{new Date(produto.createdAt).toLocaleDateString('pt-BR')}</ThemedText>
               </ThemedView>
@@ -390,7 +380,7 @@ export default function ProdutoDetalheScreen() {
           <ThemedView style={styles.section}>
             <ThemedView style={styles.sectionHeader}>
               <ThemedView style={styles.sectionHeaderLeft}>
-                <Ionicons name="layers-outline" size={20} color={theme.text} />
+                <Ionicons name="layers-outline" size={18} color={theme.text} />
                 <ThemedText type="subtitle">Lotes</ThemedText>
                 <ThemedView style={styles.countBadge}>
                   <ThemedText style={styles.countBadgeText}>{lotes.length}</ThemedText>
@@ -404,7 +394,7 @@ export default function ProdutoDetalheScreen() {
 
             {lotes.length === 0 ? (
               <ThemedView style={styles.emptyLotes}>
-                <Ionicons name="cube-outline" size={32} color={theme.textSecondary} />
+                <Ionicons name="cube-outline" size={28} color={theme.textSecondary} />
                 <ThemedText type="small" themeColor="textSecondary" style={{ textAlign: 'center' }}>
                   Nenhum lote cadastrado
                 </ThemedText>
@@ -524,7 +514,7 @@ export default function ProdutoDetalheScreen() {
             <ThemedView style={styles.section}>
               <ThemedView style={styles.sectionHeader}>
                 <ThemedView style={styles.sectionHeaderLeft}>
-                  <Ionicons name="swap-vertical-outline" size={20} color={theme.text} />
+                  <Ionicons name="swap-vertical-outline" size={18} color={theme.text} />
                   <ThemedText type="subtitle">Movimentações</ThemedText>
                 </ThemedView>
               </ThemedView>
@@ -567,7 +557,7 @@ export default function ProdutoDetalheScreen() {
               onPress={() => router.navigate('/(tabs)/estoque?editId=' + produto.id as any)}
               style={({ pressed }) => [styles.editButton, pressed && { opacity: 0.7 }]}
             >
-              <Ionicons name="create-outline" size={18} color={theme.text} />
+              <Ionicons name="create-outline" size={16} color={theme.text} />
               <ThemedText type="default" style={{ color: theme.text, fontWeight: '600' }}>
                 Editar
               </ThemedText>
@@ -576,7 +566,7 @@ export default function ProdutoDetalheScreen() {
               onPress={handleDelete}
               style={({ pressed }) => [styles.deleteButton, pressed && { opacity: 0.7 }]}
             >
-              <Ionicons name="trash-outline" size={18} color="#ef4444" />
+              <Ionicons name="trash-outline" size={16} color="#ef4444" />
               <ThemedText type="default" style={{ color: '#ef4444', fontWeight: '600' }}>
                 Excluir
               </ThemedText>
@@ -665,7 +655,7 @@ export default function ProdutoDetalheScreen() {
             <ThemedView style={styles.fieldGroup}>
               <ThemedText type="smallBold" style={styles.fieldLabel}>Nova quantidade</ThemedText>
               <TextInput
-                style={[styles.input, { color: theme.text, backgroundColor: theme.backgroundElement, fontSize: 22, fontWeight: '700', textAlign: 'center' }]}
+                style={[styles.input, { color: theme.text, backgroundColor: theme.backgroundElement, fontSize: 20, fontWeight: '700', textAlign: 'center' }]}
                 value={novaQtd}
                 onChangeText={setNovaQtd}
                 keyboardType="decimal-pad"
@@ -705,13 +695,13 @@ const styles = StyleSheet.create({
     maxWidth: MaxContentWidth,
   },
   scrollContent: {
-    gap: Spacing.four,
+    gap: Spacing.three,
     paddingBottom: Spacing.six,
   },
   backRow: {
     alignSelf: 'stretch',
     flexDirection: 'row',
-    paddingVertical: Spacing.two,
+    paddingVertical: Spacing.one,
   },
   backButton: {
     flexDirection: 'row',
@@ -722,56 +712,57 @@ const styles = StyleSheet.create({
 
   /* ===== Header Card ===== */
   headerCard: {
-    padding: Spacing.four,
+    padding: Spacing.three,
     borderRadius: Spacing.three,
-    gap: Spacing.one,
+    gap: Spacing.half,
     borderWidth: 1,
     borderColor: 'rgba(128,128,128,0.2)',
   },
   codigoText: {
     fontWeight: '700',
-    fontSize: 14,
+    fontSize: 12,
     letterSpacing: 0.5,
   },
   nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
-    marginTop: Spacing.one,
+    marginTop: 2,
   },
   productName: {
     flex: 1,
-    fontSize: 26,
-    lineHeight: 30,
+    fontSize: 20,
+    lineHeight: 24,
   },
   unitBadge: {
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.half,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: 3,
     borderRadius: Spacing.one,
     backgroundColor: '#C4956A20',
   },
   unitText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '700',
     textTransform: 'uppercase',
   },
   categoriaBadge: {
     alignSelf: 'flex-start',
     paddingHorizontal: Spacing.two,
-    paddingVertical: Spacing.half,
+    paddingVertical: 2,
     borderRadius: Spacing.half,
     backgroundColor: 'rgba(128,128,128,0.1)',
-    marginTop: Spacing.one,
+    marginTop: 2,
   },
   categoriaText: {
     letterSpacing: 0.3,
+    fontSize: 12,
   },
 
   /* ===== Info Cards ===== */
   infoCard: {
-    padding: Spacing.four,
+    padding: Spacing.three,
     borderRadius: Spacing.three,
-    gap: Spacing.three,
+    gap: Spacing.two,
     borderWidth: 1,
     borderColor: 'rgba(128,128,128,0.2)',
   },
@@ -781,14 +772,14 @@ const styles = StyleSheet.create({
   },
   infoBlock: {
     flex: 1,
-    gap: Spacing.half,
+    gap: 2,
   },
   infoValue: {
     fontWeight: '600',
   },
   infoValueLarge: {
     fontWeight: '700',
-    fontSize: 20,
+    fontSize: 18,
   },
   infoDivider: {
     height: StyleSheet.hairlineWidth,
@@ -798,8 +789,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.one,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: 4,
     borderRadius: Spacing.one,
     backgroundColor: '#f59e0b18',
     alignSelf: 'flex-start',
@@ -812,7 +803,7 @@ const styles = StyleSheet.create({
   /* ===== Ações ===== */
   actionRow: {
     flexDirection: 'row',
-    gap: Spacing.three,
+    gap: Spacing.two,
     marginTop: Spacing.one,
   },
   editButton: {
@@ -821,7 +812,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.one,
-    paddingVertical: Spacing.three,
+    paddingVertical: Spacing.two + 2,
     borderRadius: Spacing.two,
     borderWidth: 1,
     borderColor: 'rgba(128,128,128,0.2)',
@@ -832,7 +823,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.one,
-    paddingVertical: Spacing.three,
+    paddingVertical: Spacing.two + 2,
     borderRadius: Spacing.two,
     borderWidth: 1,
     borderColor: '#ef444430',
@@ -841,7 +832,7 @@ const styles = StyleSheet.create({
 
   /* ===== Sections ===== */
   section: {
-    gap: Spacing.three,
+    gap: Spacing.two,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -867,8 +858,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.two + 2,
+    paddingVertical: 6,
     borderRadius: Spacing.half,
     backgroundColor: '#C4956A',
   },
@@ -881,7 +872,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.two,
-    padding: Spacing.five,
+    padding: Spacing.four,
     borderRadius: Spacing.three,
     borderWidth: 1,
     borderColor: 'rgba(128,128,128,0.15)',
@@ -891,8 +882,8 @@ const styles = StyleSheet.create({
   /* ===== Lote Card ===== */
   loteCard: {
     padding: Spacing.three,
-    borderRadius: Spacing.three,
-    gap: Spacing.two,
+    borderRadius: Spacing.two,
+    gap: Spacing.one + 2,
     borderWidth: 1,
     borderColor: 'rgba(128,128,128,0.2)',
   },
@@ -916,38 +907,38 @@ const styles = StyleSheet.create({
   },
   loteCodigo: {
     fontWeight: '700',
-    fontSize: 15,
+    fontSize: 14,
   },
   loteStatusDot: {
-    width: 8,
-    height: 8,
+    width: 7,
+    height: 7,
     borderRadius: 4,
   },
   loteQtd: {
     fontWeight: '700',
-    fontSize: 18,
+    fontSize: 15,
   },
   loteInfoRow: {
     flexDirection: 'row',
-    gap: Spacing.three,
+    gap: Spacing.two,
   },
   loteInfoItem: {
     flex: 1,
-    gap: 2,
+    gap: 1,
   },
   loteInfoValue: {
     fontWeight: '600',
-    fontSize: 14,
+    fontSize: 13,
   },
   loteMetaRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: Spacing.two,
+    gap: Spacing.one + 2,
   },
   loteMetaTag: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 3,
   },
   loteObs: {
     fontStyle: 'italic',
@@ -957,7 +948,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     paddingHorizontal: Spacing.two,
-    paddingVertical: 4,
+    paddingVertical: 3,
     borderRadius: Spacing.half,
     alignSelf: 'flex-start',
   },
@@ -970,7 +961,7 @@ const styles = StyleSheet.create({
   loteActions: {
     flexDirection: 'row',
     gap: Spacing.two,
-    marginTop: Spacing.one,
+    marginTop: 2,
   },
   loteActionButton: {
     flex: 1,
@@ -978,7 +969,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.one,
-    paddingVertical: Spacing.two - 2,
+    paddingVertical: 6,
     borderRadius: Spacing.half,
   },
   loteActionDelete: {
@@ -987,7 +978,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.one,
-    paddingVertical: Spacing.two - 2,
+    paddingVertical: 6,
     borderRadius: Spacing.half,
     backgroundColor: '#ef444418',
   },
@@ -995,24 +986,23 @@ const styles = StyleSheet.create({
   /* ===== Movimentos ===== */
   movItem: {
     flexDirection: 'row',
-    gap: Spacing.three,
+    gap: Spacing.two,
     padding: Spacing.three,
-    borderRadius: Spacing.three,
-    alignItems: 'flex-start',
+    borderRadius: Spacing.two,
+    alignItems: 'center',
     borderWidth: 1,
     borderColor: 'rgba(128,128,128,0.2)',
   },
   movIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 2,
   },
   movContent: {
     flex: 1,
-    gap: 2,
+    gap: 1,
   },
   movTopRow: {
     flexDirection: 'row',
@@ -1021,7 +1011,7 @@ const styles = StyleSheet.create({
   },
   movQtd: {
     fontWeight: '700',
-    fontSize: 15,
+    fontSize: 14,
   },
 
   /* ===== Modal ===== */
@@ -1036,11 +1026,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.three,
+    paddingVertical: Spacing.two,
   },
   modalTitle: {
-    fontSize: 28,
-    lineHeight: 32,
+    fontSize: 20,
+    lineHeight: 24,
   },
   modalScroll: {
     flex: 1,
@@ -1048,7 +1038,7 @@ const styles = StyleSheet.create({
   modalScrollContent: {
     paddingHorizontal: Spacing.four,
     paddingBottom: Spacing.six,
-    gap: Spacing.three,
+    gap: Spacing.two,
   },
   fieldGroup: {
     gap: Spacing.one,
@@ -1059,8 +1049,8 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     paddingHorizontal: Spacing.three,
-    paddingVertical: Platform.OS === 'ios' ? Spacing.three : Spacing.two,
-    fontSize: 16,
+    paddingVertical: Platform.OS === 'ios' ? Spacing.two + 2 : Spacing.two,
+    fontSize: 15,
   },
   inputRow: {
     flexDirection: 'row',
@@ -1068,19 +1058,19 @@ const styles = StyleSheet.create({
   },
   inputAdornment: {
     paddingHorizontal: Spacing.two,
-    paddingVertical: Platform.OS === 'ios' ? Spacing.three : Spacing.two,
+    paddingVertical: Platform.OS === 'ios' ? Spacing.two + 2 : Spacing.two,
   },
   saveButton: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: Spacing.three,
+    paddingVertical: Spacing.two + 2,
     borderRadius: Spacing.two,
     marginTop: Spacing.two,
     backgroundColor: '#C4956A',
   },
   saveButtonText: {
     fontWeight: '600',
-    fontSize: 16,
+    fontSize: 15,
     color: '#fff',
   },
   overlay: {
@@ -1094,6 +1084,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 400,
     borderRadius: Spacing.three,
-    padding: Spacing.four,
+    padding: Spacing.three,
+    gap: Spacing.two,
   },
 })

@@ -159,7 +159,7 @@ export default function FinanceiroScreen() {
     { key: 'recebidas', label: 'Receitas Recebidas', value: receitasRecebidas, color: '#C4956A' },
     { key: 'areceber', label: 'Receitas a Receber', value: receitasAReceber, color: '#F59E0B' },
     { key: 'despesas', label: 'Despesas Pagas', value: despesasPagas, color: '#DC2626' },
-    { key: 'apagar', label: 'Despesas a Pagar', value: despesasAPagar, color: '#6B7280' },
+    { key: 'apagar', label: 'Despesas a Pagar', value: despesasAPagar, color: '#6B7280', route: '/pagamentos' },
   ];
 
   return (
@@ -185,7 +185,7 @@ export default function FinanceiroScreen() {
               {cards.map((card) => (
                 <Pressable
                   key={card.key}
-                  onPress={() => router.push('/financeiro-detalhe?type=' + card.key as any)}
+                  onPress={() => router.push((card as any).route || '/financeiro-detalhe?type=' + card.key)}
                   style={styles.card}
                 >
                   <ThemedText style={[styles.cardLabel, { color: card.color }]}>{card.label}</ThemedText>

@@ -13,7 +13,6 @@ export type PaymentMethod = (typeof PAYMENT_METHODS)[number]['value']
 
 export interface AppSettings {
   theme: 'light' | 'dark'
-  notificationsEnabled: boolean
   paymentMethodsOrder: PaymentMethod[]
   enabledPaymentMethods: PaymentMethod[]
   defaultUnit: string
@@ -22,7 +21,6 @@ export interface AppSettings {
 
 export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'light',
-  notificationsEnabled: true,
   paymentMethodsOrder: ['dinheiro', 'pix', 'cartão', 'fiado'],
   enabledPaymentMethods: ['dinheiro', 'pix', 'cartão', 'fiado'],
   defaultUnit: 'un',
@@ -34,6 +32,9 @@ export interface CompanyInfo {
   cnpj: string
   email: string
   phone: string
+  pixKey: string
+  pixKeyType: 'cpf' | 'cnpj' | 'email' | 'telefone' | 'aleatoria'
+  pixCity: string
 }
 
 export async function getSettings(companyId: string): Promise<AppSettings> {
@@ -72,13 +73,16 @@ export async function saveSettings(
 export async function getCompanyInfo(companyId: string): Promise<CompanyInfo> {
   const company = await get<Company>(Collections.companies, companyId)
   if (!company) {
-    return { name: '', cnpj: '', email: '', phone: '' }
+    return { name: '', cnpj: '', email: '', phone: '', pixKey: '', pixKeyType: 'cpf', pixCity: '' }
   }
   return {
     name: company.name ?? '',
     cnpj: company.cnpj ?? '',
     email: company.email ?? '',
     phone: company.phone ?? '',
+    pixKey: (company as any).pixKey ?? '',
+    pixKeyType: (company as any).pixKeyType ?? 'cpf',
+    pixCity: (company as any).pixCity ?? '',
   }
 }
 
@@ -87,13 +91,17 @@ export async function saveCompanyInfo(
   info: CompanyInfo
 ): Promise<void> {
   const company = await get<Company>(Collections.companies, companyId)
+  const data: any = {
+    name: info.name || null,
+    cnpj: info.cnpj || null,
+    email: info.email || null,
+    phone: info.phone || null,
+    pixKey: info.pixKey || null,
+    pixKeyType: info.pixKeyType || null,
+    pixCity: info.pixCity || null,
+  }
   if (company) {
-    await update<Company>(Collections.companies, companyId, {
-      name: info.name || null,
-      cnpj: info.cnpj || null,
-      email: info.email || null,
-      phone: info.phone || null,
-    } as any)
+    await update<Company>(Collections.companies, companyId, data as any)
   } else {
     await createWithId<Company>(
       Collections.companies as any,
@@ -102,6 +110,7 @@ export async function saveCompanyInfo(
         name: info.name,
         cnpj: info.cnpj,
         active: true,
+        ...data,
       } as any
     )
   }
