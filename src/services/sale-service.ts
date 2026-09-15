@@ -44,7 +44,40 @@ export async function updateSale(id: string, data: Partial<Omit<Sale, 'id' | 'cr
   return update<Sale>(Collections.sales, id, data)
 }
 
+export async function updateSaleWithItems(
+  saleId: string,
+  saleData: Partial<Omit<Sale, 'id' | 'createdAt' | 'updatedAt'>>,
+  items: Omit<SaleItem, 'id' | 'createdAt' | 'updatedAt' | 'saleId'>[]
+): Promise<void> {
+  // Update sale details
+  await update<Sale>(Collections.sales, saleId, saleData)
+
+  // Remove old items
+  const oldItems = await getSaleItems(saleId)
+  for (const item of oldItems) {
+    if (item.id) {
+      await remove(Collections.saleItems, item.id)
+    }
+  }
+
+  // Add new items
+  for (const item of items) {
+    await create<SaleItem>(Collections.saleItems, { ...item, saleId })
+  }
+}
+
+
 export async function deleteSale(id: string): Promise<void> {
+  return remove(Collections.sales, id)
+}
+
+export async function deleteSaleWithItems(id: string): Promise<void> {
+  const oldItems = await getSaleItems(id)
+  for (const item of oldItems) {
+    if (item.id) {
+      await remove(Collections.saleItems, item.id)
+    }
+  }
   return remove(Collections.sales, id)
 }
 

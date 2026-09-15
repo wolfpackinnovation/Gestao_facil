@@ -271,6 +271,37 @@ export async function reverterConsumo(
   }
 }
 
+export async function estornarConsumoDaReferencia(referenciaId: string, options?: { motivo?: string; userId?: string }): Promise<void> {
+  const movimentos = await getAll<LoteMovimento>(
+    Collections.loteMovimentos,
+    where('referenciaId', '==', referenciaId)
+  )
+  const saidas = movimentos.filter(m => m.quantidade < 0)
+  for (const m of saidas) {
+    const lote = await getLote(m.loteId)
+    if (!lote || !lote.id) continue
+    const quantidadeEstornada = Math.abs(m.quantidade)
+    const novaQtd = lote.quantidadeAtual + quantidadeEstornada
+    await updateLote(lote.id, {
+      quantidadeAtual: novaQtd,
+      ativo: true,
+    })
+    await createLoteMovimento({
+      companyId: lote.companyId,
+      productId: lote.productId,
+      loteId: lote.id,
+      tipo: 'entrada',
+      quantidade: quantidadeEstornada,
+      custoUnitario: lote.custoUnitario,
+      dataValidadeSnapshot: lote.dataValidade,
+      motivo: options?.motivo ?? `Estorno ref ${referenciaId}`,
+      userId: options?.userId,
+      referenciaTipo: m.referenciaTipo,
+      referenciaId,
+    })
+  }
+}
+
 export async function ajustarLote(
   loteId: string,
   novaQuantidade: number,

@@ -144,9 +144,7 @@ export default function HomeScreen() {
     }
     setWeekTotals(weekTotalsArr);
 
-    const expiredLotes = allLotes.filter((l) => isLoteVencido(l, today));
-    const expiredProductIds = [...new Set(expiredLotes.map((l) => l.productId))];
-    const expiredProducts = allProducts.filter((p) => expiredProductIds.includes(p.id));
+    const lowStock = allProducts.filter((p) => (p.estoqueAtual ?? 0) > 0 && (p.estoqueAtual ?? 0) <= (p.estoqueMinimo ?? 5));
 
     const debts = allDespesas
       .filter((d) => !d.pago && d.vencimento)
@@ -168,7 +166,7 @@ export default function HomeScreen() {
     setYesterdayPayments(yesterdayPayData);
     setAllSales(allSales);
     setProducts(allProducts);
-    setLowStockProducts(expiredProducts);
+    setLowStockProducts(lowStock);
     setUpcomingDebts(debts);
     setPendingBills({ count: pending.length, total: pendingTotal });
 
@@ -353,22 +351,7 @@ export default function HomeScreen() {
             </View>
           </View>
 
-          {/* Próximas do Vencimento */}
-          <Pressable style={({ pressed }) => [pressed && { opacity: 0.7 }]} onPress={() => router.push('/pagamentos')}>
-            <ThemedView style={styles.pendingBillCard}>
-              <View style={styles.pendingBillLeft}>
-                <ThemedText type="defaultBold" style={styles.pendingBillLabel}>
-                  Próximas do Vencimento
-                </ThemedText>
-                <ThemedText type="small" themeColor="textSecondary" style={styles.pendingBillCount}>
-                  {pendingBills.count} {pendingBills.count === 1 ? 'conta' : 'contas'}
-                </ThemedText>
-              </View>
-              <ThemedText style={styles.pendingBillValue}>
-                {formatCurrency(pendingBills.total)}
-              </ThemedText>
-            </ThemedView>
-          </Pressable>
+
 
           {/* Week Sales Chart */}
           <ThemedView style={styles.sectionGroup}>
@@ -382,16 +365,14 @@ export default function HomeScreen() {
               <ThemedText style={styles.sectionTitle}>Atenção</ThemedText>
               <View style={styles.alertBox}>
                 <ThemedText style={styles.alertItem}>
-                  • {lowStockProducts.length} {lowStockProducts.length === 1 ? 'produto vencido' : 'produtos vencidos'}
+                  • {lowStockProducts.length} {lowStockProducts.length === 1 ? 'produto com estoque baixo' : 'produtos com estoque baixo'}
                 </ThemedText>
                 <ThemedText style={styles.alertItem}>
                   • {upcomingDebts.length === 0
-                    ? 'Nenhuma conta a vencer'
-                    : upcomingDebts.some((d) => diffInDays(parseBRDate(d.vencimento!)!, today) < 0)
-                      ? `${upcomingDebts.length} ${upcomingDebts.length === 1 ? 'conta vencida' : 'contas vencidas/próximas'}`
-                      : `${upcomingDebts.length} ${upcomingDebts.length === 1 ? 'conta próxima' : 'contas próximas'} do vencimento`}
+                    ? 'Nenhuma conta pendente'
+                    : `${upcomingDebts.length} ${upcomingDebts.length === 1 ? 'conta pendente' : 'contas pendentes'}`}
                 </ThemedText>
-                <ThemedText style={styles.alertItem}>• 0 cliente possui fiado atrasado</ThemedText>
+                <ThemedText style={styles.alertItem}>• 0 cliente com pagamentos em atraso</ThemedText>
               </View>
             </ThemedView>
           </Pressable>

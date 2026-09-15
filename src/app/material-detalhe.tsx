@@ -5,6 +5,10 @@ import {
   ScrollView,
   StyleSheet,
   View,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -19,6 +23,7 @@ import { useTheme } from '@/hooks/use-theme';
 import {
   getMaterial,
   deleteMaterial,
+  updateMaterial,
   type Material,
 } from '@/services/material-service';
 import { formatCurrency } from '@/utils/format';
@@ -30,6 +35,21 @@ export default function MaterialDetalheScreen() {
 
   const [loading, setLoading] = useState(true);
   const [material, setMaterial] = useState<Material | null>(null);
+
+  const [replenishModalVisible, setReplenishModalVisible] = useState(false);
+  const [replenishQty, setReplenishQty] = useState('');
+  const [replenishPrice, setReplenishPrice] = useState('');
+  const [replenishing, setReplenishing] = useState(false);
+
+  function formatBRL(value: string): string {
+    const digits = value.replace(/\D/g, '');
+    if (!digits) return '';
+    const padded = digits.padStart(3, '0');
+    const intPart = padded.slice(0, -2).replace(/^0+/, '') || '0';
+    const decPart = padded.slice(-2);
+    const intFormatted = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    return `${intFormatted},${decPart}`;
+  }
 
   const loadData = useCallback(async () => {
     if (!id) return;
@@ -46,7 +66,7 @@ export default function MaterialDetalheScreen() {
   );
 
   const handleBack = useCallback(() => {
-    router.replace('/receitas?tab=materiais' as any);
+    router.replace('/materiais' as any);
   }, [router]);
 
   function handleDelete() {
@@ -70,6 +90,37 @@ export default function MaterialDetalheScreen() {
         },
       ],
     );
+  }
+
+  async function handleReplenish() {
+    if (!material) return;
+    const qty = parseFloat(replenishQty.replace(',', '.'));
+    const price = replenishPrice ? parseFloat(replenishPrice.replace(/\D/g, '')) / 100 : 0;
+    
+    if (isNaN(qty) || qty <= 0) {
+      Alert.alert('Erro', 'Por favor, informe uma quantidade válida.');
+      return;
+    }
+    
+    setReplenishing(true);
+    try {
+      const novaQtd = material.quantidadeCompra + qty;
+      const novoPreco = material.precoCompra + price;
+      
+      await updateMaterial(material.id, {
+        quantidadeCompra: novaQtd,
+        precoCompra: novoPreco,
+      });
+      
+      setReplenishModalVisible(false);
+      setReplenishQty('');
+      setReplenishPrice('');
+      loadData();
+    } catch (e: any) {
+      Alert.alert('Erro', 'Erro ao repor o material.');
+    } finally {
+      setReplenishing(false);
+    }
   }
 
   if (loading || !material) {
@@ -137,15 +188,27 @@ export default function MaterialDetalheScreen() {
             </ThemedView>
           )}
 
-          <Pressable
-            onPress={() => router.push(`/material-form?id=${material.id}` as any)}
-            style={[styles.editButton, { backgroundColor: theme.primary }]}
-          >
-            <Ionicons name="create-outline" size={18} color="#fff" />
-            <ThemedText style={{ color: '#fff', fontWeight: '700', marginLeft: Spacing.one }}>
-              Editar
-            </ThemedText>
-          </Pressable>
+          <View style={{ flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.two }}>
+            <Pressable
+              onPress={() => router.push(`/material-form?id=${material.id}` as any)}
+              style={[styles.editButton, { flex: 1, backgroundColor: theme.primary, marginTop: 0 }]}
+            >
+              <Ionicons name="create-outline" size={18} color="#fff" />
+              <ThemedText style={{ color: '#fff', fontWeight: '700', marginLeft: Spacing.one }}>
+                Editar
+              </ThemedText>
+            </Pressable>
+
+            <Pressable
+              onPress={() => setReplenishModalVisible(true)}
+              style={[styles.editButton, { flex: 1, backgroundColor: '#10B981', marginTop: 0 }]}
+            >
+              <Ionicons name="add-circle-outline" size={18} color="#fff" />
+              <ThemedText style={{ color: '#fff', fontWeight: '700', marginLeft: Spacing.one }}>
+                Repor
+              </ThemedText>
+            </Pressable>
+          </View>
 
           <Pressable
             onPress={handleDelete}
@@ -158,6 +221,80 @@ export default function MaterialDetalheScreen() {
           </Pressable>
         </ScrollView>
       </SafeAreaView>
+
+      <Modal
+        visible={replenishModalVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setReplenishModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={[{ flex: 1, backgroundColor: theme.background }]}
+        >
+          <SafeAreaView style={{ flex: 1 }}>
+            <ThemedView style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: Spacing.four, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(128,128,128,0.2)' }}>
+              <ThemedText type="title" style={{ fontSize: 18 }}>Repor Estoque</ThemedText>
+              <Pressable onPress={() => setReplenishModalVisible(false)} disabled={replenishing}>
+                <ThemedText type="default" themeColor="textSecondary">Cancelar</ThemedText>
+              </Pressable>
+            </ThemedView>
+
+            <ScrollView contentContainerStyle={{ padding: Spacing.four, gap: Spacing.four }}>
+              <ThemedView style={{ gap: Spacing.one }}>
+                <ThemedText type="smallBold" style={{ fontSize: 12, letterSpacing: 0.5 }}>
+                  Quantidade Adicional ({material.unidadeCompra}) *
+                </ThemedText>
+                <ThemedView style={{ flexDirection: 'row', alignItems: 'center', borderColor: theme.textSecondary + '55', borderWidth: 1, borderRadius: Spacing.two, overflow: 'hidden' }}>
+                  <TextInput
+                    style={{ flex: 1, height: 48, paddingHorizontal: Spacing.three, fontSize: 16, color: theme.text, backgroundColor: theme.background }}
+                    value={replenishQty}
+                    onChangeText={setReplenishQty}
+                    placeholder="Ex: 5"
+                    placeholderTextColor={theme.textSecondary}
+                    keyboardType="decimal-pad"
+                    editable={!replenishing}
+                  />
+                </ThemedView>
+              </ThemedView>
+
+              <ThemedView style={{ gap: Spacing.one }}>
+                <ThemedText type="smallBold" style={{ fontSize: 12, letterSpacing: 0.5 }}>
+                  Custo da nova compra (Opcional)
+                </ThemedText>
+                <ThemedView style={{ flexDirection: 'row', alignItems: 'center', borderColor: theme.textSecondary + '55', borderWidth: 1, borderRadius: Spacing.two, overflow: 'hidden' }}>
+                  <ThemedView style={{ paddingHorizontal: Spacing.three, paddingVertical: Spacing.three, backgroundColor: theme.backgroundElement }}>
+                    <ThemedText type="default" themeColor="textSecondary">R$</ThemedText>
+                  </ThemedView>
+                  <TextInput
+                    style={{ flex: 1, height: 48, paddingHorizontal: Spacing.three, fontSize: 16, color: theme.text, backgroundColor: theme.background }}
+                    value={formatBRL(replenishPrice)}
+                    onChangeText={(val) => setReplenishPrice(val.replace(/\D/g, ''))}
+                    placeholder="0,00"
+                    placeholderTextColor={theme.textSecondary}
+                    keyboardType="numeric"
+                    editable={!replenishing}
+                  />
+                </ThemedView>
+                <ThemedText type="small" themeColor="textSecondary">
+                  Esse valor será somado ao custo total do material e o custo por unidade será recalculado.
+                </ThemedText>
+              </ThemedView>
+            </ScrollView>
+
+            <ThemedView style={{ padding: Spacing.four, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(128,128,128,0.2)' }}>
+              <Pressable
+                style={[{ height: 48, borderRadius: Spacing.two, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.primary, opacity: replenishing ? 0.7 : 1 }]}
+                onPress={handleReplenish}
+                disabled={replenishing}
+              >
+                {replenishing ? <Loading size="small" color="#fff" /> : <ThemedText style={{ color: '#ffffff', fontWeight: '700', fontSize: 16 }}>Confirmar Reposição</ThemedText>}
+              </Pressable>
+            </ThemedView>
+          </SafeAreaView>
+        </KeyboardAvoidingView>
+      </Modal>
+
     </ThemedView>
   );
 }

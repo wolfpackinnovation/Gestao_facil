@@ -39,7 +39,7 @@ export default function MaterialFormScreen() {
   const isEdit = Boolean(id);
 
   const handleBack = useCallback(() => {
-    router.replace('/receitas?tab=materiais' as any);
+    router.replace('/materiais' as any);
   }, [router]);
 
   const [loading, setLoading] = useState(isEdit);

@@ -19,10 +19,10 @@ function HomeTabIcon({ color, size, focused }: { color: ColorValue; size: number
 type IoniconsName = React.ComponentProps<typeof Ionicons>['name'];
 
 const tabs: { name: string; label: string; icon: IoniconsName }[] = [
+  { name: 'materiais', label: 'Materiais', icon: 'apps-outline' },
   { name: 'estoque', label: 'Estoque', icon: 'cube-outline' },
-  { name: 'vendas', label: 'Vendas', icon: 'card-outline' },
   { name: 'index', label: 'Início', icon: 'home-outline' },
-  { name: 'receitas', label: 'Receitas', icon: 'trending-up-outline' },
+  { name: 'vendas', label: 'Vendas', icon: 'card-outline' },
   { name: 'clientes', label: 'Clientes', icon: 'people-outline' },
 ];
 

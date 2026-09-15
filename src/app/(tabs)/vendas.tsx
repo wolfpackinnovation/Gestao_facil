@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   View,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -19,9 +20,10 @@ import { Loading } from '@/utils/loading';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/contexts/auth';
-import { getSalesByDate, getSaleItems } from '@/services/sale-service';
+import { getSalesByDate, getSaleItems, deleteSaleWithItems } from '@/services/sale-service';
 import * as ClientService from '@/services/client-service';
 import { getProdutos } from '@/services/estoque-storage';
+import { estornarConsumoDaReferencia } from '@/services/lote-service';
 import type { Sale, SaleItem, Client } from '@/types/schema';
 import { formatCurrency } from '@/utils/format';
 
@@ -110,6 +112,36 @@ export default function VendasScreen() {
     const items = await getSaleItems(sale.id!);
     setSaleItems(items);
     setDetailVisible(true);
+  }
+
+  function handleDeleteSale(sale: Sale) {
+    Alert.alert(
+      'Excluir Venda',
+      'Tem certeza que deseja excluir esta venda? O estoque dos produtos será devolvido.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Excluir',
+          style: 'destructive',
+          onPress: async () => {
+            if (!sale.id) return;
+            try {
+              setLoading(true);
+              setDetailVisible(false);
+              await estornarConsumoDaReferencia(sale.id, {
+                motivo: 'Exclusão de venda',
+                userId: companyId
+              });
+              await deleteSaleWithItems(sale.id);
+              await loadSales();
+            } catch (error) {
+              setLoading(false);
+              Alert.alert('Erro', 'Não foi possível excluir a venda.');
+            }
+          }
+        }
+      ]
+    );
   }
 
   function renderSale({ item }: { item: Sale }) {
@@ -236,8 +268,8 @@ export default function VendasScreen() {
             <ThemedText type="title" style={styles.modalTitle}>
               {selectedSale?.number ?? 'Detalhes'}
             </ThemedText>
-            <Pressable onPress={() => setDetailVisible(false)}>
-              <ThemedText type="default" themeColor="textSecondary">Fechar</ThemedText>
+            <Pressable onPress={() => setDetailVisible(false)} style={styles.closeButton}>
+              <Ionicons name="close" size={26} color={theme.textSecondary} />
             </Pressable>
           </ThemedView>
 
@@ -278,6 +310,29 @@ export default function VendasScreen() {
               </>
             )}
           </ScrollView>
+
+          {selectedSale && (
+            <ThemedView style={styles.modalFooter}>
+              <Pressable
+                style={[styles.actionButton, { backgroundColor: 'rgba(128,128,128,0.1)' }]}
+                onPress={() => {
+                  setDetailVisible(false);
+                  router.push(`/nova-venda?editId=${selectedSale.id}&from=/(tabs)/vendas`);
+                }}
+              >
+                <Ionicons name="pencil-outline" size={20} color={theme.primary} />
+                <ThemedText style={{ color: theme.primary, fontWeight: '600' }}>Editar Venda</ThemedText>
+              </Pressable>
+
+              <Pressable
+                style={[styles.actionButton, { backgroundColor: 'rgba(239,68,68,0.1)' }]}
+                onPress={() => handleDeleteSale(selectedSale)}
+              >
+                <Ionicons name="trash-outline" size={20} color="#ef4444" />
+                <ThemedText style={{ color: '#ef4444', fontWeight: '600' }}>Excluir Venda</ThemedText>
+              </Pressable>
+            </ThemedView>
+          )}
         </SafeAreaView>
       </Modal>
     </ThemedView>
@@ -337,7 +392,7 @@ const styles = StyleSheet.create({
   },
   modalSafe: { flex: 1 },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.four, paddingVertical: Spacing.three },
-  modalTitle: { fontSize: 28, lineHeight: 32 },
+  modalTitle: { fontSize: 28, lineHeight: 32, flex: 1, marginRight: Spacing.two },
   totalCard: {
     flexDirection: 'row',
     borderRadius: Spacing.four,
@@ -397,6 +452,23 @@ const styles = StyleSheet.create({
   },
   detailRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   detailItem: { paddingVertical: Spacing.two, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(128,128,128,0.2)' },
+  closeButton: { padding: Spacing.one },
+  modalFooter: { 
+    flexDirection: 'row', 
+    gap: Spacing.three, 
+    padding: Spacing.four, 
+    borderTopWidth: StyleSheet.hairlineWidth, 
+    borderTopColor: 'rgba(128,128,128,0.2)' 
+  },
+  actionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.three,
+    borderRadius: Spacing.two,
+    gap: Spacing.one,
+  },
   fab: {
     position: 'absolute',
     bottom: 24,

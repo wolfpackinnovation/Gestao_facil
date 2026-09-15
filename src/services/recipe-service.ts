@@ -31,6 +31,7 @@ export interface Recipe {
   rendimento: number
   unidadeRendimento: string
   custosAdicionais: number
+  custoFixo?: number
   modoLucro: ModoLucro
   valorLucro: number
   observacao?: string
@@ -60,7 +61,7 @@ export interface RecipeCostBreakdown {
 }
 
 export function calcRecipeCost(
-  recipe: Pick<Recipe, 'itens' | 'rendimento' | 'custosAdicionais' | 'modoLucro' | 'valorLucro'>,
+  recipe: Pick<Recipe, 'itens' | 'rendimento' | 'custosAdicionais' | 'custoFixo' | 'modoLucro' | 'valorLucro'>,
   materials: Material[],
 ): RecipeCostBreakdown {
   const itensDetalhados = recipe.itens.map((item) => {
@@ -75,7 +76,8 @@ export function calcRecipeCost(
 
   const custoMateriais = itensDetalhados.reduce((sum, d) => sum + d.custo, 0)
   const custosAdicionais = Number(recipe.custosAdicionais ?? 0)
-  const custoTotal = custoMateriais + custosAdicionais
+  const custoFixo = Number(recipe.custoFixo ?? 0)
+  const custoTotal = custoMateriais + custosAdicionais + custoFixo
   const rendimento = Number(recipe.rendimento ?? 0) || 1
   const custoPorUnidade = custoTotal / rendimento
 

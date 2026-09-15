@@ -13,21 +13,13 @@ import {
   getProduto,
   deleteProduto,
   formatCurrency,
-  getTodosLotesDoProduto,
   type Produto,
-  isLoteVencido,
-  isLoteProximoVencimento,
-  diasAteVencimento,
 } from '@/services/estoque-storage'
-import {
-  createLote as criarLoteService,
-  ajustarLote as ajustarLoteService,
-  deleteLote,
-  listLoteMovimentos,
-  gerarCodigoLote,
-} from '@/services/lote-service'
-import type { Lote, LoteMovimento } from '@/types/schema'
+
 import { formatQuantity } from '@/utils/format'
+import { getRecipe, type Recipe } from '@/services/recipe-service'
+import { getMaterials, updateMaterial, type Material } from '@/services/material-service'
+import { convertToBase } from '@/utils/units'
 
 function todayBR(): string {
   const d = new Date();
@@ -39,25 +31,11 @@ export default function ProdutoDetalheScreen() {
   const router = useRouter()
   const theme = useTheme()
   const [produto, setProduto] = useState<Produto | null>(null)
-  const [lotes, setLotes] = useState<Lote[]>([])
-  const [movimentos, setMovimentos] = useState<LoteMovimento[]>([])
   const [loading, setLoading] = useState(true)
-  const [loteModalVisible, setLoteModalVisible] = useState(false)
-  const [ajusteModalVisible, setAjusteModalVisible] = useState(false)
-  const [loteSelecionado, setLoteSelecionado] = useState<Lote | null>(null)
-  const [novaQtd, setNovaQtd] = useState('')
-  const [motivoAjuste, setMotivoAjuste] = useState('')
 
-  const [loteForm, setLoteForm] = useState({
-    codigo: '',
-    quantidade: '',
-    custoUnitario: '',
-    dataValidade: '',
-    dataEntrada: todayBR(),
-    fornecedor: '',
-    observacao: '',
-  })
-  const [loteErrors, setLoteErrors] = useState<Record<string, string>>({})
+  const [recipe, setRecipe] = useState<Recipe | null>(null)
+  const [materials, setMaterials] = useState<Material[]>([])
+  const [deductMaterials, setDeductMaterials] = useState(true)
 
   const loadData = useCallback(async () => {
     if (!id) return
@@ -65,12 +43,12 @@ export default function ProdutoDetalheScreen() {
     const p = await getProduto(id as string)
     setProduto(p)
     if (p) {
-      const [allLotes, movs] = await Promise.all([
-        getTodosLotesDoProduto(p.id),
-        listLoteMovimentos(p.id, 50),
-      ])
-      setLotes(allLotes)
-      setMovimentos(movs)
+      const rec = await getRecipe(p.id).catch(() => null)
+      setRecipe(rec)
+      if (rec) {
+        const mats = await getMaterials(p.companyId).catch(() => [])
+        setMaterials(mats)
+      }
     }
     setLoading(false)
   }, [id])
@@ -125,184 +103,7 @@ export default function ProdutoDetalheScreen() {
     ])
   }
 
-  const handleDeleteLote = (lote: Lote) => {
-    if (lote.quantidadeAtual !== lote.quantidadeInicial) {
-      Alert.alert('Atenção', 'Este lote já teve movimentações. Excluir pode causar inconsistências no histórico.')
-    }
-    Alert.alert('Excluir Lote', `Deseja excluir o lote "${lote.codigo}"?`, [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Excluir',
-        style: 'destructive',
-        onPress: async () => {
-          if (lote.id) await deleteLote(lote.id)
-          await loadData()
-        },
-      },
-    ])
-  }
 
-  async function openLoteModal() {
-    const codigosExistentes = lotes.map(l => l.codigo)
-    setLoteForm({
-      ...loteForm,
-      codigo: gerarCodigoLote(codigosExistentes),
-      dataEntrada: todayBR(),
-    })
-    setLoteErrors({})
-    setLoteModalVisible(true)
-  }
-
-  function validateLote(): boolean {
-    const errs: Record<string, string> = {}
-    if (!loteForm.quantidade || isNaN(Number(loteForm.quantidade)) || Number(loteForm.quantidade) <= 0)
-      errs.quantidade = 'Informe a quantidade'
-    if (!loteForm.custoUnitario || isNaN(Number(loteForm.custoUnitario)) || Number(loteForm.custoUnitario) <= 0)
-      errs.custoUnitario = 'Informe o custo'
-    if (!loteForm.dataValidade.match(/^\d{2}\/\d{2}\/\d{4}$/))
-      errs.dataValidade = 'Use o formato DD/MM/AAAA'
-    if (!loteForm.dataEntrada.match(/^\d{2}\/\d{2}\/\d{4}$/))
-      errs.dataEntrada = 'Use o formato DD/MM/AAAA'
-    setLoteErrors(errs)
-    return Object.keys(errs).length === 0
-  }
-
-  async function handleSaveLote() {
-    if (!validateLote() || !produto) return
-    await criarLoteService({
-      companyId: produto.companyId,
-      productId: produto.id,
-      codigo: loteForm.codigo.trim() || gerarCodigoLote([]),
-      quantidadeInicial: Number(loteForm.quantidade),
-      custoUnitario: Number(loteForm.custoUnitario) / 100,
-      dataValidade: loteForm.dataValidade,
-      dataEntrada: loteForm.dataEntrada,
-      fornecedor: loteForm.fornecedor.trim(),
-      observacao: loteForm.observacao.trim() || undefined,
-      origem: 'detalhe-produto',
-    })
-    setLoteModalVisible(false)
-    setLoteForm({
-      codigo: '',
-      quantidade: '',
-      custoUnitario: '',
-      dataValidade: '',
-      dataEntrada: todayBR(),
-      fornecedor: '',
-      observacao: '',
-    })
-    await loadData()
-  }
-
-  function openAjusteModal(lote: Lote) {
-    setLoteSelecionado(lote)
-    setNovaQtd(lote.quantidadeAtual.toString())
-    setMotivoAjuste('')
-    setAjusteModalVisible(true)
-  }
-
-  async function handleSaveAjuste() {
-    if (!loteSelecionado) return
-    const q = parseFloat(novaQtd.replace(',', '.'))
-    if (isNaN(q) || q < 0) {
-      Alert.alert('Quantidade inválida')
-      return
-    }
-    if (loteSelecionado.id) {
-      await ajustarLoteService(loteSelecionado.id, q, motivoAjuste || 'Ajuste manual')
-    }
-    setAjusteModalVisible(false)
-    setLoteSelecionado(null)
-    await loadData()
-  }
-
-  function renderLoteField(
-    label: string,
-    field: 'codigo' | 'quantidade' | 'custoUnitario' | 'dataValidade' | 'dataEntrada' | 'fornecedor' | 'observacao',
-    options?: {
-      keyboardType?: 'default' | 'numeric' | 'decimal-pad';
-      placeholder?: string;
-      multiline?: boolean;
-      prefix?: string;
-      numeric?: boolean;
-      type?: 'text' | 'currency' | 'date';
-    }
-  ) {
-    const adornment = (text: string, position: 'left' | 'right') => (
-      <ThemedView
-        style={[
-          styles.inputAdornment,
-          {
-            backgroundColor: theme.backgroundElement,
-            borderTopLeftRadius: position === 'left' ? Spacing.two - 1 : 0,
-            borderBottomLeftRadius: position === 'left' ? Spacing.two - 1 : 0,
-            borderTopRightRadius: position === 'right' ? Spacing.two - 1 : 0,
-            borderBottomRightRadius: position === 'right' ? Spacing.two - 1 : 0,
-          },
-        ]}
-      >
-        <ThemedText type="default" themeColor="textSecondary">
-          {text}
-        </ThemedText>
-      </ThemedView>
-    )
-
-    const displayValue =
-      options?.type === 'currency' ? formatBRL((loteForm as any)[field]) : (loteForm as any)[field]
-
-    function handleChange(value: string) {
-      if (options?.type === 'currency') {
-        value = value.replace(/\D/g, '')
-      } else if (options?.type === 'date') {
-        const digits = value.replace(/\D/g, '').slice(0, 8)
-        const parts: string[] = []
-        if (digits.length > 0) parts.push(digits.slice(0, 2))
-        if (digits.length > 2) parts.push(digits.slice(2, 4))
-        if (digits.length > 4) parts.push(digits.slice(4, 8))
-        value = parts.join('/')
-      } else if (options?.numeric) {
-        value = value.replace(/[^0-9.,]/g, '')
-      }
-      setLoteForm((prev) => ({ ...prev, [field]: value }))
-      if (loteErrors[field]) {
-        setLoteErrors((prev) => {
-          const copy = { ...prev }
-          delete copy[field]
-          return copy
-        })
-      }
-    }
-
-    return (
-      <ThemedView style={styles.fieldGroup}>
-        <ThemedText type="smallBold" style={styles.fieldLabel}>{label}</ThemedText>
-        <ThemedView
-          style={[
-            styles.inputRow,
-            {
-              borderColor: loteErrors[field] ? '#ef4444' : theme.textSecondary + '55',
-              borderWidth: 1,
-              borderRadius: Spacing.two,
-            },
-          ]}
-        >
-          {options?.prefix && adornment(options.prefix, 'left')}
-          <TextInput
-            style={[styles.input, { color: theme.text, backgroundColor: theme.background, borderWidth: 0 }]}
-            value={displayValue}
-            onChangeText={handleChange}
-            placeholderTextColor={theme.textSecondary}
-            placeholder={options?.placeholder}
-            keyboardType={options?.keyboardType ?? 'default'}
-            multiline={options?.multiline}
-          />
-        </ThemedView>
-        {loteErrors[field] && (
-          <ThemedText type="small" style={{ color: '#ef4444' }}>{loteErrors[field]}</ThemedText>
-        )}
-      </ThemedView>
-    )
-  }
 
   return (
     <ThemedView style={styles.container}>
@@ -358,10 +159,7 @@ export default function ProdutoDetalheScreen() {
 
           <ThemedView style={styles.infoCard}>
             <ThemedView style={styles.infoRow}>
-              <ThemedView style={styles.infoBlock}>
-                <ThemedText type="small" themeColor="textSecondary">Custo Médio</ThemedText>
-                <ThemedText style={styles.infoValue}>{formatCurrency(produto.custoMedio ?? 0)}</ThemedText>
-              </ThemedView>
+
               <ThemedView style={styles.infoBlock}>
                 <ThemedText type="small" themeColor="textSecondary">Preço de Venda</ThemedText>
                 <ThemedText style={styles.infoValue}>{formatCurrency(produto.precoVenda)}/{produto.unidade}</ThemedText>
@@ -376,185 +174,11 @@ export default function ProdutoDetalheScreen() {
             </ThemedView>
           </ThemedView>
 
-          {/* Lotes */}
-          <ThemedView style={styles.section}>
-            <ThemedView style={styles.sectionHeader}>
-              <ThemedView style={styles.sectionHeaderLeft}>
-                <Ionicons name="layers-outline" size={18} color={theme.text} />
-                <ThemedText type="subtitle">Lotes</ThemedText>
-                <ThemedView style={styles.countBadge}>
-                  <ThemedText style={styles.countBadgeText}>{lotes.length}</ThemedText>
-                </ThemedView>
-              </ThemedView>
-              <Pressable onPress={openLoteModal} style={styles.addLoteButton}>
-                <Ionicons name="add" size={16} color="#fff" />
-                <ThemedText style={styles.addLoteButtonText}>Novo</ThemedText>
-              </Pressable>
-            </ThemedView>
 
-            {lotes.length === 0 ? (
-              <ThemedView style={styles.emptyLotes}>
-                <Ionicons name="cube-outline" size={28} color={theme.textSecondary} />
-                <ThemedText type="small" themeColor="textSecondary" style={{ textAlign: 'center' }}>
-                  Nenhum lote cadastrado
-                </ThemedText>
-              </ThemedView>
-            ) : (
-              lotes.map((lote) => {
-                const vencido = isLoteVencido(lote)
-                const proxVenc = isLoteProximoVencimento(lote)
-                const dias = diasAteVencimento(lote)
-                return (
-                  <ThemedView
-                    key={lote.id}
-                    style={[
-                      styles.loteCard,
-                      vencido && styles.loteVencido,
-                      !vencido && proxVenc && styles.loteProxVenc,
-                    ]}
-                  >
-                    <ThemedView style={styles.loteHeader}>
-                      <ThemedView style={styles.loteCodigoArea}>
-                        <ThemedText style={styles.loteCodigo}>{lote.codigo}</ThemedText>
-                        {vencido && (
-                          <ThemedView style={[styles.loteStatusDot, { backgroundColor: '#ef4444' }]} />
-                        )}
-                        {!vencido && proxVenc && (
-                          <ThemedView style={[styles.loteStatusDot, { backgroundColor: '#f59e0b' }]} />
-                        )}
-                        {!vencido && !proxVenc && (
-                          <ThemedView style={[styles.loteStatusDot, { backgroundColor: '#22c55e' }]} />
-                        )}
-                      </ThemedView>
-                      <ThemedText style={styles.loteQtd}>
-                        {formatQuantity(lote.quantidadeAtual)}
-                        <ThemedText type="small" themeColor="textSecondary"> {produto.unidade}</ThemedText>
-                      </ThemedText>
-                    </ThemedView>
-
-                    <ThemedView style={styles.loteInfoRow}>
-                      <ThemedView style={styles.loteInfoItem}>
-                        <ThemedText type="small" themeColor="textSecondary">Custo</ThemedText>
-                        <ThemedText style={styles.loteInfoValue}>{formatCurrency(lote.custoUnitario)}</ThemedText>
-                      </ThemedView>
-                      <ThemedView style={styles.loteInfoItem}>
-                        <ThemedText type="small" themeColor="textSecondary">Validade</ThemedText>
-                        <ThemedText style={[styles.loteInfoValue, vencido && { color: '#ef4444', fontWeight: '700' }]}>
-                          {lote.dataValidade}
-                        </ThemedText>
-                      </ThemedView>
-                      <ThemedView style={styles.loteInfoItem}>
-                        <ThemedText type="small" themeColor="textSecondary">Entrada</ThemedText>
-                        <ThemedText style={styles.loteInfoValue}>{lote.dataEntrada}</ThemedText>
-                      </ThemedView>
-                    </ThemedView>
-
-                    <ThemedView style={styles.loteMetaRow}>
-                      {lote.fornecedor ? (
-                        <ThemedView style={styles.loteMetaTag}>
-                          <Ionicons name="business-outline" size={12} color={theme.textSecondary} />
-                          <ThemedText type="small" themeColor="textSecondary">{lote.fornecedor}</ThemedText>
-                        </ThemedView>
-                      ) : null}
-                      {lote.origem ? (
-                        <ThemedView style={styles.loteMetaTag}>
-                          <Ionicons name="information-circle-outline" size={12} color={theme.textSecondary} />
-                          <ThemedText type="small" themeColor="textSecondary">{lote.origem}</ThemedText>
-                        </ThemedView>
-                      ) : null}
-                    </ThemedView>
-
-                    {lote.observacao ? (
-                      <ThemedText type="small" themeColor="textSecondary" style={styles.loteObs}>
-                        {lote.observacao}
-                      </ThemedText>
-                    ) : null}
-
-                    {vencido && (
-                      <ThemedView style={[styles.loteBadge, styles.loteBadgeExpired]}>
-                        <Ionicons name="alert-circle" size={14} color="#ef4444" />
-                        <ThemedText type="small" style={{ color: '#ef4444', fontWeight: '600' }}>
-                          Vencido {dias !== null && dias < 0 ? `há ${Math.abs(dias)}d` : ''}
-                        </ThemedText>
-                      </ThemedView>
-                    )}
-                    {!vencido && proxVenc && dias !== null && (
-                      <ThemedView style={[styles.loteBadge, styles.loteBadgeSoon]}>
-                        <Ionicons name="time-outline" size={14} color="#f59e0b" />
-                        <ThemedText type="small" style={{ color: '#f59e0b', fontWeight: '600' }}>
-                          Vence em {dias}d
-                        </ThemedText>
-                      </ThemedView>
-                    )}
-
-                    <ThemedView style={styles.loteActions}>
-                      <Pressable
-                        onPress={() => openAjusteModal(lote)}
-                        style={[styles.loteActionButton, { backgroundColor: theme.background }]}
-                      >
-                        <Ionicons name="pencil-outline" size={14} color={theme.text} />
-                        <ThemedText type="small" style={{ fontWeight: '600' }}>Ajustar</ThemedText>
-                      </Pressable>
-                      <Pressable
-                        onPress={() => handleDeleteLote(lote)}
-                        style={styles.loteActionDelete}
-                      >
-                        <Ionicons name="trash-outline" size={14} color="#ef4444" />
-                        <ThemedText type="small" style={{ color: '#ef4444', fontWeight: '600' }}>Excluir</ThemedText>
-                      </Pressable>
-                    </ThemedView>
-                  </ThemedView>
-                )
-              })
-            )}
-          </ThemedView>
-
-          {/* Histórico de Movimentações */}
-          {movimentos.length > 0 && (
-            <ThemedView style={styles.section}>
-              <ThemedView style={styles.sectionHeader}>
-                <ThemedView style={styles.sectionHeaderLeft}>
-                  <Ionicons name="swap-vertical-outline" size={18} color={theme.text} />
-                  <ThemedText type="subtitle">Movimentações</ThemedText>
-                </ThemedView>
-              </ThemedView>
-              {movimentos.slice(0, 10).map((m) => {
-                const date = m.createdAt?.toDate ? m.createdAt.toDate() : new Date(m.createdAt as any)
-                const isEntrada = m.tipo === 'entrada'
-                return (
-                  <ThemedView key={m.id} style={styles.movItem}>
-                    <ThemedView style={[styles.movIcon, { backgroundColor: isEntrada ? '#22c55e20' : '#ef444420' }]}>
-                      <Ionicons
-                        name={isEntrada ? 'arrow-down-outline' : 'arrow-up-outline'}
-                        size={16}
-                        color={isEntrada ? '#22c55e' : '#ef4444'}
-                      />
-                    </ThemedView>
-                    <ThemedView style={styles.movContent}>
-                      <ThemedView style={styles.movTopRow}>
-                        <ThemedText type="small" style={{ fontWeight: '700', textTransform: 'capitalize' }}>
-                          {m.tipo}
-                        </ThemedText>
-                        <ThemedText style={[styles.movQtd, { color: isEntrada ? '#22c55e' : '#ef4444' }]}>
-                          {isEntrada ? '+' : '-'}{Number(m.quantidade).toFixed(2)}
-                        </ThemedText>
-                      </ThemedView>
-                      <ThemedText type="small" themeColor="textSecondary">
-                        {date.toLocaleString('pt-BR')}
-                      </ThemedText>
-                      {m.motivo ? (
-                        <ThemedText type="small" themeColor="textSecondary">{m.motivo}</ThemedText>
-                      ) : null}
-                    </ThemedView>
-                  </ThemedView>
-                )
-              })}
-            </ThemedView>
-          )}
 
           <View style={styles.actionRow}>
             <Pressable
-              onPress={() => router.navigate('/(tabs)/estoque?editId=' + produto.id as any)}
+              onPress={() => router.push('/receita-form?id=' + produto.id as any)}
               style={({ pressed }) => [styles.editButton, pressed && { opacity: 0.7 }]}
             >
               <Ionicons name="create-outline" size={16} color={theme.text} />
@@ -575,110 +199,7 @@ export default function ProdutoDetalheScreen() {
         </ScrollView>
       </SafeAreaView>
 
-      {/* Modal de Lote */}
-      <Modal
-        visible={loteModalVisible}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setLoteModalVisible(false)}
-      >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={[styles.modalContainer, { backgroundColor: theme.background }]}
-        >
-          <SafeAreaView style={styles.modalSafe}>
-            <ThemedView style={styles.modalHeader}>
-              <ThemedText type="title" style={styles.modalTitle}>Novo Lote</ThemedText>
-              <Pressable onPress={() => setLoteModalVisible(false)}>
-                <ThemedText type="default" themeColor="textSecondary">Cancelar</ThemedText>
-              </Pressable>
-            </ThemedView>
-            <ScrollView
-              style={styles.modalScroll}
-              contentContainerStyle={styles.modalScrollContent}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              {renderLoteField('Código do Lote *', 'codigo', { placeholder: 'Ex: LT001' })}
-              {renderLoteField('Quantidade *', 'quantidade', {
-                keyboardType: 'decimal-pad',
-                placeholder: 'Ex: 10',
-                numeric: true,
-              })}
-              {renderLoteField('Custo Unitário *', 'custoUnitario', {
-                keyboardType: 'decimal-pad',
-                placeholder: 'Ex: 45,90',
-                prefix: 'R$',
-                type: 'currency',
-              })}
-              {renderLoteField('Data de Validade *', 'dataValidade', {
-                placeholder: 'DD/MM/AAAA',
-                type: 'date',
-              })}
-              {renderLoteField('Data de Entrada *', 'dataEntrada', {
-                placeholder: 'DD/MM/AAAA',
-                type: 'date',
-              })}
-              {renderLoteField('Fornecedor (opcional)', 'fornecedor', {
-                placeholder: 'Ex: Frigorífico X',
-              })}
-              {renderLoteField('Observação (opcional)', 'observacao', {
-                placeholder: 'Ex: Nota fiscal 12345',
-                multiline: true,
-              })}
 
-              <Pressable onPress={handleSaveLote} style={styles.saveButton}>
-                <ThemedText style={styles.saveButtonText}>Cadastrar Lote</ThemedText>
-              </Pressable>
-            </ScrollView>
-          </SafeAreaView>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      {/* Modal de Ajuste */}
-      <Modal
-        visible={ajusteModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setAjusteModalVisible(false)}
-      >
-        <Pressable style={styles.overlay} onPress={() => setAjusteModalVisible(false)}>
-          <Pressable style={[styles.ajusteSheet, { backgroundColor: theme.background }]} onPress={(e) => e.stopPropagation()}>
-            <ThemedText type="subtitle" style={{ marginBottom: Spacing.three }}>
-              Ajustar Quantidade do Lote
-            </ThemedText>
-            {loteSelecionado && (
-              <ThemedText type="small" themeColor="textSecondary" style={{ marginBottom: Spacing.three }}>
-                Lote {loteSelecionado.codigo} • Atual: {formatQuantity(loteSelecionado.quantidadeAtual)} {produto.unidade}
-              </ThemedText>
-            )}
-            <ThemedView style={styles.fieldGroup}>
-              <ThemedText type="smallBold" style={styles.fieldLabel}>Nova quantidade</ThemedText>
-              <TextInput
-                style={[styles.input, { color: theme.text, backgroundColor: theme.backgroundElement, fontSize: 20, fontWeight: '700', textAlign: 'center' }]}
-                value={novaQtd}
-                onChangeText={setNovaQtd}
-                keyboardType="decimal-pad"
-                placeholder="0"
-                placeholderTextColor={theme.textSecondary}
-              />
-            </ThemedView>
-            <ThemedView style={styles.fieldGroup}>
-              <ThemedText type="smallBold" style={styles.fieldLabel}>Motivo (opcional)</ThemedText>
-              <TextInput
-                style={[styles.input, { color: theme.text, backgroundColor: theme.backgroundElement }]}
-                value={motivoAjuste}
-                onChangeText={setMotivoAjuste}
-                placeholder="Ex: Contagem de inventário"
-                placeholderTextColor={theme.textSecondary}
-              />
-            </ThemedView>
-            <Pressable onPress={handleSaveAjuste} style={styles.saveButton}>
-              <ThemedText style={styles.saveButtonText}>Salvar Ajuste</ThemedText>
-            </Pressable>
-          </Pressable>
-        </Pressable>
-      </Modal>
     </ThemedView>
   )
 }

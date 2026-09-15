@@ -5,6 +5,11 @@ import {
   ScrollView,
   StyleSheet,
   View,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
+  TextInput,
+  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -22,9 +27,12 @@ import {
   calcRecipeCost,
   type Recipe,
 } from '@/services/recipe-service';
-import { getMaterials, type Material } from '@/services/material-service';
+import { getMaterials, updateMaterial, type Material } from '@/services/material-service';
+import { getProdutos, saveProduto } from '@/services/estoque-storage';
+
 import { formatCurrency } from '@/utils/format';
-import { formatQuantity, sameType } from '@/utils/units';
+import { formatQuantity, sameType, convertToBase } from '@/utils/units';
+
 
 export default function ReceitaDetalheScreen() {
   const theme = useTheme();
@@ -32,12 +40,17 @@ export default function ReceitaDetalheScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
 
   const handleBack = useCallback(() => {
-    router.replace('/receitas?tab=receitas' as any);
+    router.replace('/estoque' as any);
   }, [router]);
 
   const [loading, setLoading] = useState(true);
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [materials, setMaterials] = useState<Material[]>([]);
+
+  const [productionModalVisible, setProductionModalVisible] = useState(false);
+  const [productionQuantity, setProductionQuantity] = useState('');
+  const [deductMaterials, setDeductMaterials] = useState(true);
+  const [producing, setProducing] = useState(false);
 
   const loadData = useCallback(async () => {
     if (!id) return;
@@ -88,6 +101,72 @@ export default function ReceitaDetalheScreen() {
         },
       ],
     );
+  }
+
+  async function handleProduzir() {
+    if (!recipe || !breakdown) return;
+    const qty = parseFloat(productionQuantity.replace(',', '.'));
+    if (isNaN(qty) || qty <= 0) {
+      Alert.alert('Erro', 'Por favor, informe uma quantidade válida maior que zero.');
+      return;
+    }
+
+    setProducing(true);
+    try {
+      const mult = qty / recipe.rendimento;
+      
+      if (deductMaterials) {
+        for (const item of recipe.itens) {
+          const material = materials.find(m => m.id === item.materialId);
+          if (material) {
+            const consumedBase = convertToBase(item.quantidade, item.unidade) * mult;
+            const consumedCompra = consumedBase / convertToBase(1, material.unidadeCompra);
+            const newQty = Math.max(0, material.quantidadeCompra - consumedCompra);
+            await updateMaterial(material.id, { quantidadeCompra: newQty });
+          }
+        }
+      }
+
+      const allProdutos = await getProdutos(recipe.companyId);
+      let linkedProduto = allProdutos.find(p => p.nome.trim().toLowerCase() === recipe.nome.trim().toLowerCase());
+      
+      let productId = '';
+      if (!linkedProduto) {
+        productId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+        await saveProduto({
+          id: productId,
+          companyId: recipe.companyId,
+          codigo: 'R' + Date.now().toString().slice(-4),
+          nome: recipe.nome,
+          categoria: 'Outros',
+          unidade: recipe.unidadeRendimento as any,
+          quantidade: qty,
+          custo: breakdown.custoPorUnidade,
+          precoVenda: breakdown.precoSugerido,
+          estoqueMinimo: 0,
+          dataValidade: '',
+          fornecedor: 'Produção Própria',
+          createdAt: new Date().toISOString()
+        });
+      } else {
+        productId = linkedProduto.id;
+        await saveProduto({
+          ...linkedProduto,
+          quantidade: (linkedProduto.quantidade || 0) + qty,
+          custo: breakdown.custoPorUnidade,
+          precoVenda: breakdown.precoSugerido,
+        });
+      }
+
+      Alert.alert('Sucesso', 'Produção registrada e adicionada ao estoque com sucesso!');
+      setProductionModalVisible(false);
+      setProductionQuantity('');
+      loadData(); // Reload materials if deducted
+    } catch (e: any) {
+      Alert.alert('Erro', e?.message || 'Erro ao registrar produção.');
+    } finally {
+      setProducing(false);
+    }
   }
 
   if (loading || !recipe || !breakdown) {
@@ -210,6 +289,17 @@ export default function ReceitaDetalheScreen() {
               <Ionicons name="create-outline" size={18} color="#fff" />
               <ThemedText style={{ fontWeight: '600', marginLeft: Spacing.one, color: '#fff' }}>Editar</ThemedText>
             </Pressable>
+            
+            <Pressable
+              onPress={() => {
+                setProductionQuantity(recipe.rendimento.toString());
+                setProductionModalVisible(true);
+              }}
+              style={[styles.actionButton, { backgroundColor: '#10B981' }]}
+            >
+              <Ionicons name="cube-outline" size={18} color="#fff" />
+              <ThemedText style={{ fontWeight: '600', marginLeft: Spacing.one, color: '#fff' }}>Adicionar em Estoque</ThemedText>
+            </Pressable>
           </View>
 
           <Pressable
@@ -225,6 +315,71 @@ export default function ReceitaDetalheScreen() {
           <View style={{ height: 40 }} />
         </ScrollView>
       </SafeAreaView>
+
+      <Modal
+        visible={productionModalVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setProductionModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={[styles.modalContainer, { backgroundColor: theme.background }]}
+        >
+          <SafeAreaView style={styles.modalSafe}>
+            <ThemedView style={styles.modalHeader}>
+              <ThemedText type="title" style={styles.modalTitle}>Adicionar em Estoque</ThemedText>
+              <Pressable onPress={() => setProductionModalVisible(false)} disabled={producing}>
+                <ThemedText type="default" themeColor="textSecondary">Cancelar</ThemedText>
+              </Pressable>
+            </ThemedView>
+
+            <ScrollView contentContainerStyle={styles.modalScrollContent}>
+              <ThemedView style={styles.fieldGroup}>
+                <ThemedText type="smallBold" style={styles.fieldLabel}>
+                  Quantidade Produzida ({recipe.unidadeRendimento}) *
+                </ThemedText>
+                <ThemedView style={[styles.inputRow, { borderColor: theme.textSecondary + '55', borderWidth: 1, borderRadius: Spacing.two }]}>
+                  <TextInput
+                    style={[styles.input, { color: theme.text, backgroundColor: theme.background }]}
+                    value={productionQuantity}
+                    onChangeText={setProductionQuantity}
+                    placeholder="Ex: 10"
+                    placeholderTextColor={theme.textSecondary}
+                    keyboardType="decimal-pad"
+                    editable={!producing}
+                  />
+                </ThemedView>
+              </ThemedView>
+
+              <ThemedView style={styles.switchRow}>
+                <ThemedView style={{ flex: 1, gap: 4 }}>
+                  <ThemedText style={{ fontWeight: '600' }}>Dar baixa nos materiais</ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    Desconta os materiais utilizados no estoque baseando-se no rendimento da receita.
+                  </ThemedText>
+                </ThemedView>
+                <Switch
+                  value={deductMaterials}
+                  onValueChange={setDeductMaterials}
+                  disabled={producing}
+                />
+              </ThemedView>
+            </ScrollView>
+
+            <ThemedView style={styles.modalFooter}>
+              <Pressable
+                style={[styles.saveButton, { backgroundColor: theme.primary, opacity: producing ? 0.7 : 1 }]}
+                onPress={handleProduzir}
+                disabled={producing}
+              >
+                {producing ? <Loading size="small" color="#fff" /> : <ThemedText style={styles.saveButtonText}>Confirmar</ThemedText>}
+              </Pressable>
+            </ThemedView>
+          </SafeAreaView>
+        </KeyboardAvoidingView>
+      </Modal>
+
     </ThemedView>
   );
 }
@@ -333,4 +488,47 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.two,
     borderWidth: 1,
   },
+  modalContainer: { flex: 1 },
+  modalSafe: { flex: 1 },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: Spacing.four,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(128,128,128,0.2)',
+  },
+  modalTitle: { fontSize: 18 },
+  modalScrollContent: { padding: Spacing.four, gap: Spacing.four },
+  fieldGroup: { gap: Spacing.one },
+  fieldLabel: { fontSize: 12, letterSpacing: 0.5 },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  input: {
+    flex: 1,
+    height: 48,
+    paddingHorizontal: Spacing.three,
+    fontSize: 16,
+  },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: Spacing.two,
+  },
+  modalFooter: {
+    padding: Spacing.four,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(128,128,128,0.2)',
+  },
+  saveButton: {
+    height: 48,
+    borderRadius: Spacing.two,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveButtonText: { color: '#ffffff', fontWeight: '700', fontSize: 16 },
 });

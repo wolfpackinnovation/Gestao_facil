@@ -55,12 +55,18 @@ export default function MaterialsTab() {
           <Ionicons name="cube-outline" size={22} color={theme.primary} />
         </ThemedView>
         <ThemedView style={{ flex: 1 }}>
-          <ThemedText style={{ fontWeight: '700', fontSize: 15 }} numberOfLines={1}>
+          <ThemedText style={{ fontWeight: '700', fontSize: 15, color: item.quantidadeCompra <= 0 ? '#9CA3AF' : theme.text }} numberOfLines={1}>
             {item.nome}
           </ThemedText>
-          <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
-            {item.quantidadeCompra} {item.unidadeCompra}
-          </ThemedText>
+          {item.quantidadeCompra <= 0 ? (
+            <ThemedText type="small" style={{ color: '#ef4444', fontWeight: '600' }} numberOfLines={1}>
+              Indisponível
+            </ThemedText>
+          ) : (
+            <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+              {item.quantidadeCompra} {item.unidadeCompra}
+            </ThemedText>
+          )}
         </ThemedView>
         <ThemedView style={{ alignItems: 'flex-end' }}>
           <ThemedText style={{ fontWeight: '700', fontSize: 15 }}>

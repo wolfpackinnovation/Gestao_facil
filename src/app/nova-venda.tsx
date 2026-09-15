@@ -27,9 +27,9 @@ import { useAuth } from '@/contexts/auth';
 import * as SaleService from '@/services/sale-service';
 import * as ClientService from '@/services/client-service';
 import { getProdutos, getStockStatus, type Produto, type StockIssue } from '@/services/estoque-storage';
-import { consumirEstoqueFEFO, reverterConsumo, type ConsumoFEFO } from '@/services/lote-service';
+import { consumirEstoqueFEFO, reverterConsumo, estornarConsumoDaReferencia, type ConsumoFEFO } from '@/services/lote-service';
 import { getCompanyInfo, type CompanyInfo } from '@/services/settings-service';
-import type { Client } from '@/types/schema';
+import type { Client, Sale } from '@/types/schema';
 import QRCode from 'react-native-qrcode-svg';
 
 function formatCurrency(value: number): string {
@@ -53,10 +53,11 @@ interface CartItem {
 export default function NovaVendaScreen() {
   const theme = useTheme();
   const router = useRouter();
-  const { from } = useLocalSearchParams<{ from?: string }>();
+  const { from, editId } = useLocalSearchParams<{ from?: string, editId?: string }>();
   const { user } = useAuth();
   const companyId = user?.uid ?? '';
-
+  
+  const [editingSale, setEditingSale] = useState<Sale | null>(null);
   const [products, setProducts] = useState<Produto[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -87,6 +88,28 @@ export default function NovaVendaScreen() {
       setPixMerchantCity((info as any).pixCity ?? '');
     });
   }, [companyId]);
+
+  useEffect(() => {
+    if (editId && products.length > 0) {
+      SaleService.getSale(editId).then(async sale => {
+        if (sale) {
+          setEditingSale(sale);
+          setPaymentMethod(sale.paymentMethod || 'dinheiro');
+          setSelectedClientId(sale.clientId || '');
+          setDescontoText(sale.desconto ? sale.desconto.toFixed(2).replace('.', ',') : '');
+          setJurosText(sale.juros ? sale.juros.toString() : '');
+          const items = await SaleService.getSaleItems(editId);
+          setCart(items.map(item => ({
+            productId: item.productId,
+            productName: products.find(p => p.id === item.productId)?.nome || 'Produto desconhecido',
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            subtotal: item.subtotal
+          })));
+        }
+      });
+    }
+  }, [editId, products]);
 
   function handleProductPress(product: Produto) {
     setShowProductPicker(false);
@@ -208,7 +231,7 @@ export default function NovaVendaScreen() {
 
     const saleData: any = {
       companyId,
-      number: generateSaleNumber(),
+      number: editingSale ? editingSale.number : generateSaleNumber(),
       totalAmount: totalFinal,
       desconto,
       juros: jurosPercent > 0 ? jurosPercent : undefined,
@@ -217,6 +240,8 @@ export default function NovaVendaScreen() {
     };
     if (selectedClientId) {
       saleData.clientId = selectedClientId;
+    } else {
+      saleData.clientId = null;
     }
 
     const items = cart.map((c) => ({
@@ -227,7 +252,13 @@ export default function NovaVendaScreen() {
     }));
 
     try {
-      const saleId = await SaleService.createSaleWithItems(saleData, items);
+      let saleId = editId;
+      if (editId) {
+        await estornarConsumoDaReferencia(editId, { motivo: 'Edição de Venda', userId: companyId });
+        await SaleService.updateSaleWithItems(editId, saleData, items);
+      } else {
+        saleId = await SaleService.createSaleWithItems(saleData, items);
+      }
 
       const consumosPorProduto: Record<string, ConsumoFEFO[]> = {}
       let erroEstoque = false
@@ -307,7 +338,7 @@ export default function NovaVendaScreen() {
           <Pressable onPress={goBack} style={styles.backButton}>
             <ThemedText type="default" themeColor="textSecondary">Cancelar</ThemedText>
           </Pressable>
-          <ThemedText type="title" style={styles.headerTitle}>Nova Venda</ThemedText>
+          <ThemedText type="title" style={styles.headerTitle}>{editId ? 'Editar Venda' : 'Nova Venda'}</ThemedText>
           <ThemedView style={styles.backButton} />
         </ThemedView>
 
@@ -478,7 +509,7 @@ export default function NovaVendaScreen() {
             style={[styles.saveButton, { backgroundColor: cart.length > 0 ? theme.primary : theme.textSecondary }]}
           >
             <ThemedText style={[styles.saveButtonText, { color: '#ffffff' }]}>
-              Finalizar Venda
+              {editId ? 'Salvar Venda' : 'Finalizar Venda'}
             </ThemedText>
           </Pressable>
         </ThemedView>
@@ -509,14 +540,19 @@ export default function NovaVendaScreen() {
               contentContainerStyle={{ gap: Spacing.two }}
               renderItem={({ item }) => (
                 <Pressable
+                  disabled={(item.estoqueAtual ?? 0) <= 0}
                   onPress={() => handleProductPress(item)}
-                  style={styles.productPickerItem}
+                  style={[styles.productPickerItem, (item.estoqueAtual ?? 0) <= 0 && { opacity: 0.6 }]}
                 >
                   <ThemedView style={{ flex: 1 }}>
-                    <ThemedText style={{ fontWeight: '600' }}>{item.nome}</ThemedText>
-                    <ThemedText type="small" themeColor="textSecondary">
-                      {item.unidade} - Estoque: {item.estoqueAtual}
-                    </ThemedText>
+                    <ThemedText style={{ fontWeight: '600', color: (item.estoqueAtual ?? 0) <= 0 ? '#9CA3AF' : theme.text }}>{item.nome}</ThemedText>
+                    {(item.estoqueAtual ?? 0) <= 0 ? (
+                      <ThemedText type="small" style={{ color: '#ef4444', fontWeight: '600' }}>Produto indisponível</ThemedText>
+                    ) : (
+                      <ThemedText type="small" themeColor="textSecondary">
+                        {item.unidade} - Estoque: {item.estoqueAtual}
+                      </ThemedText>
+                    )}
                   </ThemedView>
                   <ThemedText style={{ fontWeight: '700' }}>{formatCurrency(item.precoVenda)}</ThemedText>
                 </Pressable>

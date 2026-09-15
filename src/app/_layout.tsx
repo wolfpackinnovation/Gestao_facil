@@ -12,7 +12,7 @@ import Sidebar from '@/components/sidebar';
 
 SplashScreen.preventAutoHideAsync();
 
-const hideHeaderRoutes = new Set(['/login', '/signup', '/perfil', '/produto-detalhe', '/cliente-detalhe', '/nova-venda', '/venda-sucesso', '/financeiro-detalhe', '/adicionar-documento-fiscal', '/escanear-qr-fiscal', '/termos-de-uso', '/politica-privacidade', '/sobre-o-app', '/assinatura-info', '/receita-detalhe', '/receita-form', '/material-detalhe', '/material-form', '/materiais', '/receitas'])
+const hideHeaderRoutes = new Set(['/login', '/signup', '/perfil', '/produto-detalhe', '/cliente-detalhe', '/nova-venda', '/venda-sucesso', '/financeiro-detalhe', '/adicionar-documento-fiscal', '/escanear-qr-fiscal', '/termos-de-uso', '/politica-privacidade', '/sobre-o-app', '/assinatura-info', '/receita-detalhe', '/receita-form', '/material-detalhe', '/material-form'])
 
 const routeTitles: Record<string, string> = {
   'index': 'GestFacil',

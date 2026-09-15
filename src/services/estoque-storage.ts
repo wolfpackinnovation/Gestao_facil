@@ -1,21 +1,6 @@
 import { createWithId, getAll, get as dbGet, update as dbUpdate, remove, where } from './db'
 import { Collections } from './collections'
-import {
-  listLotesByProduct,
-  listAllLotesByProduct,
-  getEstoqueAtual,
-  getCustoMedio,
-  getProximaValidade,
-  isLoteVencido,
-  isLoteProximoVencimento,
-  diasAteVencimento,
-  consumirEstoqueFEFO,
-  reverterConsumo,
-  ajustarLote,
-  type ConsumoFEFO,
-  type ResultadoConsumo,
-} from './lote-service'
-import type { Lote } from '@/types/schema'
+import { listLotes, getEstoqueAtual } from './lote-service'
 
 export type UnidadeMedida = 'un' | 'kg' | 'g' | 'litro' | 'mL'
 
@@ -61,9 +46,9 @@ export async function getProduto(id: string): Promise<Produto | null> {
     const doc = await dbGet<any>(Collections.inventory, id)
     if (!doc) return null
     const p = fromFirestoreDoc(doc)
-    p.estoqueAtual = await getEstoqueAtual(p.id)
-    p.custoMedio = await getCustoMedio(p.id)
-    p.proximaValidade = await getProximaValidade(p.id)
+    p.estoqueAtual = await getEstoqueAtual(id)
+    p.custoMedio = p.custo
+    p.proximaValidade = p.dataValidade
     return p
   } catch {
     return null
@@ -77,16 +62,19 @@ export async function getProdutos(companyId: string): Promise<Produto[]> {
       where('companyId', '==', companyId)
     )
     const produtos = docs.map(fromFirestoreDoc)
+    const allLotes = await listLotes(companyId)
 
-    const enriched = await Promise.all(
-      produtos.map(async (p) => {
-        p.estoqueAtual = await getEstoqueAtual(p.id)
-        p.custoMedio = await getCustoMedio(p.id)
-        p.proximaValidade = await getProximaValidade(p.id)
-        return p
-      })
-    )
-    return enriched
+    const lotesByProduct = allLotes.reduce((acc, lote) => {
+      acc[lote.productId] = (acc[lote.productId] || 0) + (lote.quantidadeAtual || 0);
+      return acc;
+    }, {} as Record<string, number>);
+
+    return produtos.map((p) => {
+      p.estoqueAtual = lotesByProduct[p.id] !== undefined ? lotesByProduct[p.id] : p.quantidade;
+      p.custoMedio = p.custo
+      p.proximaValidade = p.dataValidade
+      return p
+    })
   } catch {
     return []
   }
@@ -104,20 +92,8 @@ export async function saveProduto(produto: Produto): Promise<void> {
 
 export async function deleteProduto(id: string): Promise<void> {
   try {
-    const lotes = await listAllLotesByProduct(id)
-    for (const lote of lotes) {
-      if (lote.id) await remove(Collections.lotes, lote.id)
-    }
     await remove(Collections.inventory, id)
   } catch {}
-}
-
-export async function getLotesDoProduto(productId: string): Promise<Lote[]> {
-  return listLotesByProduct(productId)
-}
-
-export async function getTodosLotesDoProduto(productId: string): Promise<Lote[]> {
-  return listAllLotesByProduct(productId)
 }
 
 export const CATEGORIAS = [
@@ -137,17 +113,6 @@ export const UNIDADES: UnidadeMedida[] = ['un', 'kg', 'g', 'litro', 'mL'];
 export function formatCurrency(value: number): string {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
-
-export {
-  isLoteVencido,
-  isLoteProximoVencimento,
-  diasAteVencimento,
-  consumirEstoqueFEFO,
-  reverterConsumo,
-  ajustarLote,
-}
-
-export type { ConsumoFEFO, ResultadoConsumo, Lote }
 
 export type StockStatus = 'out' | 'low' | 'ok'
 

@@ -161,23 +161,11 @@ export default function BancoScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={{ flex: 1 }}
         >
-          <ThemedView style={styles.backRow}>
-            <Pressable onPress={() => router.back()} style={styles.backButton}>
-              <SymbolView
-                tintColor={theme.text}
-                name={{ ios: 'chevron.left', android: 'arrow_back', web: 'arrow_back' }}
-                size={24}
-              />
-              <ThemedText type="smallBold">Voltar</ThemedText>
-            </Pressable>
-            <ThemedText style={styles.headerTitle}>Banco</ThemedText>
-            <ThemedView style={{ width: 60 }} />
-          </ThemedView>
 
           <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
             <ThemedView style={styles.heroCard}>
@@ -288,26 +276,17 @@ export default function BancoScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  safeArea: { flex: 1, paddingHorizontal: Spacing.four, maxWidth: MaxContentWidth, alignSelf: 'center', width: '100%' },
-  backRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: Spacing.two,
-  },
-  backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.one,
-    padding: Spacing.one,
-  },
-  headerTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    textAlign: 'center',
+  safeArea: {
     flex: 1,
+    maxWidth: MaxContentWidth,
+    alignSelf: 'center',
+    width: '100%',
   },
-  scroll: { gap: Spacing.three, paddingVertical: Spacing.three, paddingBottom: Spacing.six },
+  scroll: {
+    padding: Spacing.four,
+    paddingTop: Spacing.two,
+    gap: Spacing.four,
+  },
   heroCard: {
     alignItems: 'center',
     padding: Spacing.four,

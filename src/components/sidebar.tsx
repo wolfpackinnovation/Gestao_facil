@@ -16,11 +16,11 @@ const SIDEBAR_WIDTH = Dimensions.get('window').width * 0.75;
 
 const mainItems = [
   { icon: 'home', label: 'Início', route: '/' },
-  { icon: 'trending-up', label: 'Financeiro', route: '/financeiro' },
   { icon: 'cash', label: 'Pagamentos', route: '/pagamentos' },
 ];
 
 const premiumItems = [
+  { icon: 'trending-up', label: 'Financeiro', route: '/financeiro' },
   { icon: 'bar-chart', label: 'Relatórios', route: '/relatorios' },
   { icon: 'document-text', label: 'Arquivos fiscais', route: '/arquivos-fiscais' },
 ];
