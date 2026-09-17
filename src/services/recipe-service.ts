@@ -31,6 +31,7 @@ export interface Recipe {
   rendimento: number
   unidadeRendimento: string
   custosAdicionais: number
+  percentualCustosAdicionais?: number
   custoFixo?: number
   modoLucro: ModoLucro
   valorLucro: number
@@ -111,6 +112,8 @@ function fromFirestoreDoc(doc: any): Recipe {
     rendimento: doc.rendimento ?? 1,
     unidadeRendimento: doc.unidadeRendimento ?? 'un',
     custosAdicionais: doc.custosAdicionais ?? 0,
+    percentualCustosAdicionais: doc.percentualCustosAdicionais,
+    custoFixo: doc.custoFixo,
     modoLucro: doc.modoLucro ?? 'markup',
     valorLucro: doc.valorLucro ?? 0,
     observacao: doc.observacao || undefined,

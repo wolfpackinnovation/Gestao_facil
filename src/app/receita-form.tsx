@@ -81,9 +81,9 @@ export default function ReceitaFormScreen() {
       const rec = await getRecipe(id).catch(() => null);
       if (rec) {
         setNome(rec.nome);
-        setRendimento(isProduce ? '' : String(rec.rendimento || ''));
+        setRendimento(isProduce ? '' : String(rec.rendimento ?? ''));
         setUnidadeRendimento(rec.unidadeRendimento);
-        setLucroEsperado(String(rec.valorLucro || ''));
+        setLucroEsperado(String(rec.valorLucro ?? ''));
         setItens(rec.itens.map(i => ({ ...i, _tempQty: String(i.quantidade) })) || []);
         if (rec.custoFixo && rec.custoFixo > 0 && rec.itens.length === 0) {
           setTipoProduto('revenda');
@@ -93,12 +93,14 @@ export default function ReceitaFormScreen() {
         if (rec.custoFixo) {
           setCustoFixo(formatBRLInput(rec.custoFixo.toFixed(2)));
         }
-        if (rec.custosAdicionais && rec.custoTotal) {
+        if (rec.percentualCustosAdicionais !== undefined) {
+          setPercentualCustosAdicionais(String(rec.percentualCustosAdicionais).replace('.', ','));
+        } else if (rec.custosAdicionais && rec.custoTotal) {
           // custoMateriais sem custo fixo
           const custoMateriais = (rec.custoTotal ?? 0) - (rec.custosAdicionais ?? 0) - (rec.custoFixo ?? 0);
           if (custoMateriais > 0) {
             const pct = ((rec.custosAdicionais ?? 0) / custoMateriais) * 100;
-            setPercentualCustosAdicionais(pct.toFixed(2).replace('.', ','));
+            setPercentualCustosAdicionais(Number(pct.toFixed(2)).toString().replace('.', ','));
           }
         }
       }
@@ -182,6 +184,7 @@ export default function ReceitaFormScreen() {
   }
 
   async function handleSave() {
+    if (saving) return;
     if (!companyId) return;
     if (!nome.trim()) {
       Alert.alert('Campo obrigatório', 'Preencha o nome do produto.');
@@ -197,6 +200,7 @@ export default function ReceitaFormScreen() {
         rendimento: Number(rendimento.replace(',', '.')) || 1,
         unidadeRendimento,
         custosAdicionais: custosAdicionaisCalculado,
+        percentualCustosAdicionais: percentualNum,
         custoFixo: custoFixoNum,
         modoLucro: 'markup' as const,
         valorLucro: Number(lucroEsperado.replace(',', '.')) || 0,
@@ -228,7 +232,7 @@ export default function ReceitaFormScreen() {
           codigo: existingProd?.codigo || ('R' + String(produtos.length + 1).padStart(3, '0')),
           nome: payload.nome,
           categoria: 'Outros',
-          unidade: payload.unidadeRendimento,
+          unidade: payload.unidadeRendimento as import('@/services/estoque-storage').UnidadeMedida,
           quantidade: newQty,
           custo: payload.custoPorUnidade,
           precoVenda: Number(precoVendaFinal.replace(/\./g, '').replace(',', '.')) || payload.precoSugerido,
@@ -236,6 +240,13 @@ export default function ReceitaFormScreen() {
           dataValidade: dataValidade || existingProd?.dataValidade || '',
           fornecedor: existingProd?.fornecedor ?? '',
           createdAt: existingProd?.createdAt ?? new Date().toISOString(),
+          precoSugerido: payload.precoSugerido,
+          custosAdicionais: payload.custosAdicionais,
+          percentualCustosAdicionais: payload.percentualCustosAdicionais,
+          percentualLucro: Number(lucroEsperado.replace(',', '.')) || 0,
+          custoTotal: payload.custoTotal,
+          custoPorUnidade: payload.custoPorUnidade,
+          custoMateriais: custoMateriais,
         });
 
         if ((!isEdit || isProduce) && payload.rendimento > 0) {
@@ -245,7 +256,10 @@ export default function ReceitaFormScreen() {
               const consumedBase = convertToBase(item.quantidade, item.unidade);
               const consumedCompra = consumedBase / convertToBase(1, material.unidadeCompra);
               const updatedQty = Math.max(0, material.quantidadeCompra - consumedCompra);
-              await updateMaterial(material.id, { quantidadeCompra: updatedQty });
+              await updateMaterial(material.id, { 
+                quantidadeCompra: updatedQty,
+                custoPorUnidadeBase: material.custoPorUnidadeBase
+              });
             }
           }
         }
@@ -501,6 +515,12 @@ export default function ReceitaFormScreen() {
 
             <ThemedView style={styles.preview}>
               <ThemedText style={styles.sectionTitle}>Prévia do cálculo</ThemedText>
+
+              <View style={styles.previewRow}>
+                <ThemedText themeColor="textSecondary">Rendimento (Quantidade)</ThemedText>
+                <ThemedText style={{ fontWeight: '700' }}>{rendimento} {unidadeRendimento}</ThemedText>
+              </View>
+
               {tipoProduto === 'receita' && (
                 <>
                   <View style={styles.previewRow}>

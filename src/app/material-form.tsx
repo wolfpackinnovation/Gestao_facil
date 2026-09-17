@@ -81,6 +81,7 @@ export default function MaterialFormScreen() {
   }
 
   async function handleSave() {
+    if (saving) return;
     if (!companyId) return;
     if (!nome.trim()) {
       Alert.alert('Campo obrigatório', 'Preencha o nome do material.');

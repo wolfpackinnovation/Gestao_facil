@@ -183,10 +183,6 @@ export default function ArquivosFiscaisScreen() {
     }
   }, [companyId, loadData]);
 
-  const handleScanQR = useCallback(() => {
-    router.push('/escanear-qr-fiscal');
-  }, [router]);
-
   const handleAddManually = useCallback(() => {
     router.push('/adicionar-documento-fiscal');
   }, [router]);
@@ -194,7 +190,6 @@ export default function ArquivosFiscaisScreen() {
   const fabActions = [
     { icon: 'document-outline' as const, label: 'Importar XML', onPress: handleImportXML },
     { icon: 'document-attach-outline' as const, label: 'Importar PDF', onPress: handleImportPDF },
-    { icon: 'qr-code-outline' as const, label: 'Escanear QR Code', onPress: handleScanQR },
     { icon: 'create-outline' as const, label: 'Adicionar manualmente', onPress: handleAddManually },
   ];
 

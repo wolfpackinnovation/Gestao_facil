@@ -174,7 +174,56 @@ export default function ProdutoDetalheScreen() {
             </ThemedView>
           </ThemedView>
 
-
+          {produto.precoSugerido !== undefined && (
+            <ThemedView style={styles.infoCard}>
+              <ThemedText style={{ fontSize: 13, fontWeight: '700', marginBottom: Spacing.one, letterSpacing: 0.5 }}>PRÉVIA DO CÁLCULO</ThemedText>
+              
+              {recipe && recipe.rendimento !== undefined && (
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <ThemedText style={{ fontSize: 13 }} themeColor="textSecondary">Rendimento da receita</ThemedText>
+                  <ThemedText style={{ fontSize: 13, fontWeight: '600' }}>{formatQuantity(recipe.rendimento)} {recipe.unidadeRendimento}</ThemedText>
+                </View>
+              )}
+              {produto.custoMateriais !== undefined && produto.custoMateriais > 0 && (
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <ThemedText style={{ fontSize: 13 }} themeColor="textSecondary">Custo dos materiais</ThemedText>
+                  <ThemedText style={{ fontSize: 13, fontWeight: '600' }}>{formatCurrency(produto.custoMateriais)}</ThemedText>
+                </View>
+              )}
+              {produto.custosAdicionais !== undefined && produto.custosAdicionais > 0 && (
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <ThemedText style={{ fontSize: 13 }} themeColor="textSecondary">
+                    Custos adicionais {produto.percentualCustosAdicionais !== undefined && produto.percentualCustosAdicionais > 0 ? `(${produto.percentualCustosAdicionais.toFixed(1).replace(/\.0$/, '')}%)` : ''}
+                  </ThemedText>
+                  <ThemedText style={{ fontSize: 13, fontWeight: '600' }}>{formatCurrency(produto.custosAdicionais)}</ThemedText>
+                </View>
+              )}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                <ThemedText style={{ fontSize: 13 }} themeColor="textSecondary">Custo total</ThemedText>
+                <ThemedText style={{ fontSize: 13, fontWeight: '600' }}>{formatCurrency(produto.custoTotal ?? produto.custo)}</ThemedText>
+              </View>
+              {produto.custoPorUnidade !== undefined && (
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <ThemedText style={{ fontSize: 13 }} themeColor="textSecondary">Custo por unidade</ThemedText>
+                  <ThemedText style={{ fontSize: 13, fontWeight: '600' }}>{formatCurrency(produto.custoPorUnidade)}</ThemedText>
+                </View>
+              )}
+              {produto.percentualLucro !== undefined && produto.percentualLucro > 0 && (
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <ThemedText style={{ fontSize: 13 }} themeColor="textSecondary">
+                    Lucro esperado ({produto.percentualLucro.toFixed(1).replace(/\.0$/, '')}%)
+                  </ThemedText>
+                  <ThemedText style={{ fontSize: 13, fontWeight: '600' }}>
+                    {formatCurrency((produto.precoSugerido ?? 0) - (produto.custoPorUnidade ?? 0))}
+                  </ThemedText>
+                </View>
+              )}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: 'rgba(128,128,128,0.2)' }}>
+                <ThemedText style={{ fontSize: 14, fontWeight: '600' }}>Preço sugerido</ThemedText>
+                <ThemedText style={{ fontSize: 14, fontWeight: '700', color: '#22c55e' }}>{formatCurrency(produto.precoSugerido)}</ThemedText>
+              </View>
+            </ThemedView>
+          )}
 
           <View style={styles.actionRow}>
             <Pressable

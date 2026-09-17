@@ -19,7 +19,7 @@ import {
   getMaterials,
   type Material,
 } from '@/services/material-service';
-import { formatCurrency } from '@/utils/format';
+import { formatCurrency, formatQuantity } from '@/utils/format';
 
 export default function MaterialsTab() {
   const theme = useTheme();
@@ -64,7 +64,7 @@ export default function MaterialsTab() {
             </ThemedText>
           ) : (
             <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
-              {item.quantidadeCompra} {item.unidadeCompra}
+              {formatQuantity(item.quantidadeCompra)} {item.unidadeCompra}
             </ThemedText>
           )}
         </ThemedView>

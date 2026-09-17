@@ -44,6 +44,12 @@ function fromFirestoreDoc(doc: any): Material {
   const preco = doc.precoCompra ?? 0;
   const qtd = doc.quantidadeCompra ?? 0;
   const unidade = doc.unidadeCompra ?? 'un';
+  
+  let baseCost = doc.custoPorUnidadeBase;
+  if (baseCost === undefined || baseCost === null || baseCost === 0) {
+    baseCost = calcCustoPorUnidadeBase(preco, qtd, unidade);
+  }
+
   return {
     id: doc.id,
     companyId: doc.companyId,
@@ -52,7 +58,7 @@ function fromFirestoreDoc(doc: any): Material {
     unidadeCompra: unidade,
     quantidadeCompra: qtd,
     precoCompra: preco,
-    custoPorUnidadeBase: doc.custoPorUnidadeBase ?? calcCustoPorUnidadeBase(preco, qtd, unidade),
+    custoPorUnidadeBase: baseCost,
     fornecedor: doc.fornecedor || undefined,
     observacao: doc.observacao || undefined,
     createdAt: doc.createdAt?.toDate?.()?.toISOString?.() ?? doc.createdAt ?? new Date().toISOString(),
@@ -109,20 +115,22 @@ export async function deleteMaterial(id: string): Promise<void> {
 
 export async function updateMaterial(
   id: string,
-  data: Partial<Omit<Material, 'id' | 'createdAt' | 'custoPorUnidadeBase'>>,
+  data: Partial<Omit<Material, 'id' | 'createdAt'>>,
 ): Promise<void> {
   try {
     const updateData: any = { ...data, updatedAt: new Date().toISOString() }
-    if (
-      data.precoCompra !== undefined ||
-      data.quantidadeCompra !== undefined ||
-      data.unidadeCompra !== undefined
-    ) {
-      const current = await getMaterial(id)
-      const preco = data.precoCompra ?? current?.precoCompra ?? 0
-      const qtd = data.quantidadeCompra ?? current?.quantidadeCompra ?? 0
-      const unidade = data.unidadeCompra ?? current?.unidadeCompra ?? 'un'
-      updateData.custoPorUnidadeBase = calcCustoPorUnidadeBase(preco, qtd, unidade)
+    if (data.custoPorUnidadeBase === undefined) {
+      if (
+        data.precoCompra !== undefined ||
+        data.quantidadeCompra !== undefined ||
+        data.unidadeCompra !== undefined
+      ) {
+        const current = await getMaterial(id)
+        const preco = data.precoCompra ?? current?.precoCompra ?? 0
+        const qtd = data.quantidadeCompra ?? current?.quantidadeCompra ?? 0
+        const unidade = data.unidadeCompra ?? current?.unidadeCompra ?? 'un'
+        updateData.custoPorUnidadeBase = calcCustoPorUnidadeBase(preco, qtd, unidade)
+      }
     }
     await update<any>(Collections.materiais, id, updateData)
   } catch {}

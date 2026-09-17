@@ -1,6 +1,6 @@
 import { createWithId, getAll, get as dbGet, update as dbUpdate, remove, where } from './db'
 import { Collections } from './collections'
-import { listLotes, getEstoqueAtual } from './lote-service'
+import { listLotes, getEstoqueAtual, listAllLotesByProduct } from './lote-service'
 
 export type UnidadeMedida = 'un' | 'kg' | 'g' | 'litro' | 'mL'
 
@@ -21,6 +21,13 @@ export interface Produto {
   estoqueAtual?: number
   custoMedio?: number
   proximaValidade?: string | null
+  precoSugerido?: number
+  custosAdicionais?: number
+  percentualCustosAdicionais?: number
+  percentualLucro?: number
+  custoTotal?: number
+  custoPorUnidade?: number
+  custoMateriais?: number
 }
 
 function fromFirestoreDoc(doc: any): Produto {
@@ -38,6 +45,13 @@ function fromFirestoreDoc(doc: any): Produto {
     dataValidade: doc.dataValidade ?? '',
     fornecedor: doc.fornecedor ?? '',
     createdAt: doc.createdAt?.toDate?.()?.toISOString() ?? doc.createdAt ?? new Date().toISOString(),
+    precoSugerido: doc.precoSugerido,
+    custosAdicionais: doc.custosAdicionais,
+    percentualCustosAdicionais: doc.percentualCustosAdicionais,
+    percentualLucro: doc.percentualLucro,
+    custoTotal: doc.custoTotal,
+    custoPorUnidade: doc.custoPorUnidade,
+    custoMateriais: doc.custoMateriais,
   }
 }
 
@@ -46,7 +60,12 @@ export async function getProduto(id: string): Promise<Produto | null> {
     const doc = await dbGet<any>(Collections.inventory, id)
     if (!doc) return null
     const p = fromFirestoreDoc(doc)
-    p.estoqueAtual = await getEstoqueAtual(id)
+    const lotes = await listAllLotesByProduct(id)
+    if (lotes.length > 0) {
+      p.estoqueAtual = await getEstoqueAtual(id)
+    } else {
+      p.estoqueAtual = p.quantidade
+    }
     p.custoMedio = p.custo
     p.proximaValidade = p.dataValidade
     return p

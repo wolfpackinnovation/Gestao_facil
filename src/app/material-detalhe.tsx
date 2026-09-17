@@ -26,7 +26,7 @@ import {
   updateMaterial,
   type Material,
 } from '@/services/material-service';
-import { formatCurrency } from '@/utils/format';
+import { formatCurrency, formatQuantity } from '@/utils/format';
 
 export default function MaterialDetalheScreen() {
   const theme = useTheme();
@@ -156,7 +156,7 @@ export default function MaterialDetalheScreen() {
           <ThemedView style={styles.card}>
             <ThemedText type="small" themeColor="textSecondary">Conteúdo da embalagem</ThemedText>
             <ThemedText style={styles.value}>
-              {material.quantidadeCompra} {material.unidadeCompra}
+              {formatQuantity(material.quantidadeCompra)} {material.unidadeCompra}
             </ThemedText>
           </ThemedView>
 
