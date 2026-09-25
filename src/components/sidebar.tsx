@@ -51,17 +51,24 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
   };
 
   const handleLogout = () => {
-    Alert.alert('Sair', 'Tem certeza que deseja sair?', [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Sair',
-        style: 'destructive',
-        onPress: async () => {
-          onClose();
-          await logout();
+    if (Platform.OS === 'web') {
+      if (window.confirm('Tem certeza que deseja sair?')) {
+        onClose();
+        logout();
+      }
+    } else {
+      Alert.alert('Sair', 'Tem certeza que deseja sair?', [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Sair',
+          style: 'destructive',
+          onPress: async () => {
+            onClose();
+            await logout();
+          },
         },
-      },
-    ]);
+      ]);
+    }
   };
 
   if (!open) return null;

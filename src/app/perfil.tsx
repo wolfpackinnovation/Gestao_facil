@@ -46,18 +46,25 @@ export default function PerfilScreen() {
     }
   }
 
-  const handleLogout = () => {
-    Alert.alert('Sair', 'Tem certeza que deseja sair?', [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Sair',
-        style: 'destructive',
-        onPress: async () => {
-          await logout()
-          router.replace('/(auth)/login')
+  const handleLogout = async () => {
+    if (Platform.OS === 'web') {
+      if (window.confirm('Tem certeza que deseja sair?')) {
+        await logout()
+        router.replace('/(auth)/login')
+      }
+    } else {
+      Alert.alert('Sair', 'Tem certeza que deseja sair?', [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Sair',
+          style: 'destructive',
+          onPress: async () => {
+            await logout()
+            router.replace('/(auth)/login')
+          },
         },
-      },
-    ])
+      ])
+    }
   }
 
   return (
