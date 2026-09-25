@@ -1,5 +1,6 @@
 import { initializeApp, getApps } from 'firebase/app'
 import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore'
+import { Platform } from 'react-native'
 import { getAuth, initializeAuth, getReactNativePersistence, connectAuthEmulator } from 'firebase/auth'
 import { getStorage, connectStorageEmulator } from 'firebase/storage'
 import AsyncStorage from '@react-native-async-storage/async-storage'
@@ -30,9 +31,11 @@ function getFirebase() {
 
   const app = initializeApp(firebaseConfig)
   const db = getFirestore(app)
-  const auth = initializeAuth(app, {
-    persistence: getReactNativePersistence(AsyncStorage),
-  })
+  const auth = Platform.OS === 'web'
+    ? getAuth(app)
+    : initializeAuth(app, {
+        persistence: getReactNativePersistence(AsyncStorage),
+      })
   const storage = getStorage(app)
 
   if (__DEV__ && extra.firebaseUseEmulator === 'true') {
