@@ -1,4 +1,4 @@
-import { View, Pressable, StyleSheet, Dimensions, Alert } from 'react-native';
+import { View, Pressable, StyleSheet, Dimensions, Alert, Platform } from 'react-native';
 import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
 import { useRouter, usePathname } from 'expo-router';
