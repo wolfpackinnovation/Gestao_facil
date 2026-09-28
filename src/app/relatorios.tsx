@@ -13,7 +13,7 @@ import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/contexts/auth';
 import { PremiumGate } from '@/components/premium-gate';
-import { getSalesByDate } from '@/services/sale-service';
+import { getAllSales, getSaleItems } from '@/services/sale-service';
 import { getDespesas } from '@/services/despesa-service';
 import { listClients } from '@/services/client-service';
 import { getProdutos } from '@/services/estoque-storage';
@@ -43,18 +43,6 @@ function getMonthRange(ref: Date): { start: Date; end: Date } {
   return { start, end };
 }
 
-async function getSalesInPeriod(companyId: string, ref: Date) {
-  const { start, end } = getMonthRange(ref);
-  const days: any[] = [];
-  const current = new Date(start);
-  while (current <= end) {
-    const daySales = await getSalesByDate(companyId, current);
-    days.push(...daySales);
-    current.setDate(current.getDate() + 1);
-  }
-  return days;
-}
-
 export default function RelatoriosScreen() {
   const colors = useTheme();
   const { user } = useAuth();
@@ -63,23 +51,82 @@ export default function RelatoriosScreen() {
   const [referenceDate, setReferenceDate] = useState(() => new Date());
   const [loading, setLoading] = useState(true);
   const [sales, setSales] = useState<any[]>([]);
+  const [prevSales, setPrevSales] = useState<any[]>([]);
   const [despesas, setDespesas] = useState<any[]>([]);
   const [clients, setClients] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
+  const [topProducts, setTopProducts] = useState<any[]>([]);
+  const [topProductsRevenue, setTopProductsRevenue] = useState<any[]>([]);
+  const [totalFiados, setTotalFiados] = useState<number>(0);
 
   const loadData = useCallback(async () => {
     if (!companyId) return;
     setLoading(true);
-    const [salesData, despesasData, clientsData, productsData] = await Promise.all([
-      getSalesInPeriod(companyId, referenceDate),
+    const [allSalesData, despesasData, clientsData, productsData] = await Promise.all([
+      getAllSales(companyId),
       getDespesas(companyId),
       listClients(companyId),
       getProdutos(companyId),
     ]);
+
+    const { start, end } = getMonthRange(referenceDate);
+    const startMs = start.getTime();
+    const endMs = end.getTime();
+    
+    const salesData = allSalesData.filter((s: any) => {
+      const d = s.createdAt?.toDate?.()?.getTime() ?? new Date(s.createdAt).getTime();
+      return d >= startMs && d <= endMs;
+    });
+
+    const prevMonthDate = new Date(referenceDate);
+    prevMonthDate.setMonth(prevMonthDate.getMonth() - 1);
+    const { start: pStart, end: pEnd } = getMonthRange(prevMonthDate);
+    const prevSalesData = allSalesData.filter((s: any) => {
+      const d = s.createdAt?.toDate?.()?.getTime() ?? new Date(s.createdAt).getTime();
+      return d >= pStart.getTime() && d <= pEnd.getTime();
+    });
+
+    const fiadosSum = allSalesData
+      .filter((s: any) => s.paymentMethod === 'fiado' && s.status !== 'concluída')
+      .reduce((sum: number, s: any) => sum + (s.totalAmount - (s.paidAmount ?? 0)), 0);
+
+    const itemsPromises = salesData.map((s: any) => s.id ? getSaleItems(s.id) : Promise.resolve([]));
+    const allItems = (await Promise.all(itemsPromises)).flat();
+
+    const pCounts: Record<string, number> = {};
+    const pRevenue: Record<string, number> = {};
+    for (const item of allItems) {
+      if (item.productId) {
+        pCounts[item.productId] = (pCounts[item.productId] ?? 0) + item.quantity;
+        pRevenue[item.productId] = (pRevenue[item.productId] ?? 0) + item.subtotal;
+      }
+    }
+
+    const pMap = new Map(productsData.map((p: any) => [p.id, p.nome]));
+    const topProd = Object.entries(pCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([id, count]) => ({
+        name: pMap.get(id) ?? 'Produto desconhecido',
+        count,
+      }));
+
+    const topProdRev = Object.entries(pRevenue)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([id, rev]) => ({
+        name: pMap.get(id) ?? 'Produto desconhecido',
+        revenue: rev,
+      }));
+
     setSales(salesData);
+    setPrevSales(prevSalesData);
     setDespesas(despesasData);
     setClients(clientsData);
     setProducts(productsData);
+    setTopProducts(topProd);
+    setTopProductsRevenue(topProdRev);
+    setTotalFiados(fiadosSum);
     setLoading(false);
   }, [companyId, referenceDate]);
 
@@ -98,8 +145,25 @@ export default function RelatoriosScreen() {
     [sales],
   );
 
+  const prevTotalRevenue = useMemo(
+    () => prevSales.reduce((sum: number, s: any) => sum + s.totalAmount, 0),
+    [prevSales],
+  );
+
   const despesasPeriodo = useMemo(() => {
     const { start, end } = getMonthRange(referenceDate);
+    const startStr = start.toISOString().slice(0, 10);
+    const endStr = end.toISOString().slice(0, 10);
+    return despesas.filter((d: any) => {
+      const dStr = d.data.slice(0, 10);
+      return dStr >= startStr && dStr <= endStr;
+    });
+  }, [despesas, referenceDate]);
+
+  const prevDespesasPeriodo = useMemo(() => {
+    const prev = new Date(referenceDate);
+    prev.setMonth(prev.getMonth() - 1);
+    const { start, end } = getMonthRange(prev);
     const startStr = start.toISOString().slice(0, 10);
     const endStr = end.toISOString().slice(0, 10);
     return despesas.filter((d: any) => {
@@ -113,7 +177,29 @@ export default function RelatoriosScreen() {
     [despesasPeriodo],
   );
 
+  const prevTotalExpenses = useMemo(
+    () => prevDespesasPeriodo.reduce((sum: number, d: any) => sum + d.valor, 0),
+    [prevDespesasPeriodo],
+  );
+
   const profit = totalRevenue - totalExpenses;
+  const prevProfit = prevTotalRevenue - prevTotalExpenses;
+  const profitMargin = totalRevenue > 0 ? (profit / totalRevenue) * 100 : 0;
+  
+  const revenueGrowth = prevTotalRevenue > 0 ? ((totalRevenue - prevTotalRevenue) / prevTotalRevenue) * 100 : (totalRevenue > 0 ? 100 : 0);
+  const profitGrowth = prevProfit > 0 ? ((profit - prevProfit) / prevProfit) * 100 : (profit > 0 ? 100 : 0);
+
+  const salesByDayOfWeek = useMemo(() => {
+    const map: Record<number, number> = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
+    for (const sale of sales) {
+      const d = sale.createdAt?.toDate?.() ?? new Date(sale.createdAt);
+      map[d.getDay()] += sale.totalAmount;
+    }
+    const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+    return Object.entries(map)
+      .map(([dayIdx, total]) => ({ day: days[Number(dayIdx)], total }))
+      .sort((a, b) => b.total - a.total);
+  }, [sales]);
 
   const totalsByMethod = useMemo(() => {
     const map: Record<string, number> = {};
@@ -206,7 +292,12 @@ export default function RelatoriosScreen() {
               <ThemedText style={[styles.summaryValue, { color: '#C4956A' }]}>
                 {formatCurrency(totalRevenue)}
               </ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">{sales.length} vendas</ThemedText>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Ionicons name={revenueGrowth >= 0 ? 'arrow-up' : 'arrow-down'} size={12} color={revenueGrowth >= 0 ? '#10B981' : '#DC2626'} />
+                <ThemedText type="small" themeColor="textSecondary">
+                  {Math.abs(revenueGrowth).toFixed(1)}% vs. mês ant.
+                </ThemedText>
+              </View>
             </ThemedView>
             <ThemedView style={styles.summaryCard}>
               <ThemedText type="small" themeColor="textSecondary">Despesas</ThemedText>
@@ -220,6 +311,25 @@ export default function RelatoriosScreen() {
               <ThemedText style={[styles.summaryValue, { color: profit >= 0 ? '#C4956A' : '#DC2626' }]}>
                 {formatCurrency(profit)}
               </ThemedText>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Ionicons name={profitGrowth >= 0 ? 'arrow-up' : 'arrow-down'} size={12} color={profitGrowth >= 0 ? '#10B981' : '#DC2626'} />
+                <ThemedText type="small" themeColor="textSecondary">
+                  {Math.abs(profitGrowth).toFixed(1)}% vs. mês ant.
+                </ThemedText>
+              </View>
+            </ThemedView>
+            <ThemedView style={styles.summaryCard}>
+              <ThemedText type="small" themeColor="textSecondary">Margem de Lucro</ThemedText>
+              <ThemedText style={[styles.summaryValue, { color: profitMargin >= 0 ? '#10B981' : '#DC2626' }]}>
+                {profitMargin.toFixed(1)}%
+              </ThemedText>
+            </ThemedView>
+            <ThemedView style={styles.summaryCard}>
+              <ThemedText type="small" themeColor="textSecondary">Fiados Pendentes</ThemedText>
+              <ThemedText style={[styles.summaryValue, { color: '#F59E0B' }]}>
+                {formatCurrency(totalFiados)}
+              </ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">Total a receber</ThemedText>
             </ThemedView>
             <ThemedView style={styles.summaryCard}>
               <ThemedText type="small" themeColor="textSecondary">Ticket Médio</ThemedText>
@@ -287,6 +397,26 @@ export default function RelatoriosScreen() {
             </ThemedView>
           )}
 
+          {/* Top Days of Week */}
+          {salesByDayOfWeek.some(d => d.total > 0) && (
+            <ThemedView style={styles.sectionGroup}>
+              <ThemedText style={styles.sectionTitle}>Dias Mais Fortes da Semana</ThemedText>
+              <ThemedView style={styles.card}>
+                {salesByDayOfWeek.filter(d => d.total > 0).slice(0, 5).map((item, idx) => (
+                  <View key={item.day} style={styles.clientRow}>
+                    <ThemedView style={styles.rankCircle}>
+                      <ThemedText style={{ fontWeight: '700', fontSize: 12 }}>{idx + 1}</ThemedText>
+                    </ThemedView>
+                    <ThemedView style={{ flex: 1 }}>
+                      <ThemedText type="default" numberOfLines={1}>{item.day}</ThemedText>
+                    </ThemedView>
+                    <ThemedText style={{ fontWeight: '700' }}>{formatCurrency(item.total)}</ThemedText>
+                  </View>
+                ))}
+              </ThemedView>
+            </ThemedView>
+          )}
+
           {/* Top Clients */}
           {salesByClient.length > 0 && (
             <ThemedView style={styles.sectionGroup}>
@@ -302,6 +432,46 @@ export default function RelatoriosScreen() {
                       <ThemedText type="small" themeColor="textSecondary">{item.count} compras</ThemedText>
                     </ThemedView>
                     <ThemedText style={{ fontWeight: '700' }}>{formatCurrency(item.total)}</ThemedText>
+                  </View>
+                ))}
+              </ThemedView>
+            </ThemedView>
+          )}
+
+          {/* Top Products */}
+          {topProducts.length > 0 && (
+            <ThemedView style={styles.sectionGroup}>
+              <ThemedText style={styles.sectionTitle}>Produtos Mais Vendidos (Qtd)</ThemedText>
+              <ThemedView style={styles.card}>
+                {topProducts.map((p, idx) => (
+                  <View key={p.name + idx} style={styles.clientRow}>
+                    <ThemedView style={styles.rankCircle}>
+                      <ThemedText style={{ fontWeight: '700', fontSize: 12 }}>{idx + 1}</ThemedText>
+                    </ThemedView>
+                    <ThemedView style={{ flex: 1 }}>
+                      <ThemedText type="default" numberOfLines={1}>{p.name}</ThemedText>
+                    </ThemedView>
+                    <ThemedText style={{ fontWeight: '700' }}>{p.count} unid.</ThemedText>
+                  </View>
+                ))}
+              </ThemedView>
+            </ThemedView>
+          )}
+
+          {/* Top Products Revenue */}
+          {topProductsRevenue.length > 0 && (
+            <ThemedView style={styles.sectionGroup}>
+              <ThemedText style={styles.sectionTitle}>Produtos Mais Rentáveis</ThemedText>
+              <ThemedView style={styles.card}>
+                {topProductsRevenue.map((p, idx) => (
+                  <View key={p.name + idx} style={styles.clientRow}>
+                    <ThemedView style={styles.rankCircle}>
+                      <ThemedText style={{ fontWeight: '700', fontSize: 12 }}>{idx + 1}</ThemedText>
+                    </ThemedView>
+                    <ThemedView style={{ flex: 1 }}>
+                      <ThemedText type="default" numberOfLines={1}>{p.name}</ThemedText>
+                    </ThemedView>
+                    <ThemedText style={{ fontWeight: '700' }}>{formatCurrency(p.revenue)}</ThemedText>
                   </View>
                 ))}
               </ThemedView>

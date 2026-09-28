@@ -235,21 +235,19 @@ export default function EstoqueScreen() {
         </Pressable>
 
         <ThemedView style={styles.cardActions}>
+          <Pressable
+            onPress={() => router.push(`/receita-form?id=${item.id}&produce=true` as any)}
+            style={[styles.actionButton, { backgroundColor: '#C4956A18' }]}
+          >
+            <ThemedText style={[styles.actionButtonText, { color: '#C4956A' }]}>Adicionar Estoque</ThemedText>
+          </Pressable>
           {(item.estoqueAtual ?? 0) > 0 && (
-            <>
-              <Pressable
-                onPress={() => router.push(`/receita-form?id=${item.id}&produce=true` as any)}
-                style={[styles.actionButton, { backgroundColor: '#C4956A18' }]}
-              >
-                <ThemedText style={[styles.actionButtonText, { color: '#C4956A' }]}>Adicionar Estoque</ThemedText>
-              </Pressable>
-              <Pressable
-                onPress={() => openMovement('saida', item)}
-                style={[styles.actionButton, { backgroundColor: '#DC262618' }]}
-              >
-                <ThemedText style={[styles.actionButtonText, { color: '#DC2626' }]}>Saída</ThemedText>
-              </Pressable>
-            </>
+            <Pressable
+              onPress={() => openMovement('saida', item)}
+              style={[styles.actionButton, { backgroundColor: '#DC262618' }]}
+            >
+              <ThemedText style={[styles.actionButtonText, { color: '#DC2626' }]}>Saída</ThemedText>
+            </Pressable>
           )}
         </ThemedView>
       </ThemedView>

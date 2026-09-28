@@ -178,7 +178,7 @@ export default function HomeScreen() {
       productCounts[item.productId] = (productCounts[item.productId] ?? 0) + item.quantity;
     }
 
-    const sorted = Object.entries(productCounts).sort((a, b) => b[1] - a[1]).slice(0, 3);
+    const sorted = Object.entries(productCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
     const productMap = new Map(allProducts.map((p) => [p.id, p.nome]));
     setTopProducts(
       sorted.map(([id, count]) => ({
