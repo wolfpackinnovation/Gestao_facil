@@ -19,6 +19,7 @@ export type CategoriaDespesa = typeof CATEGORIAS_DESPESA[number]
 export interface Despesa {
   id: string
   companyId: string
+  materialId?: string
   descricao: string
   valor: number
   categoria: CategoriaDespesa
@@ -37,6 +38,7 @@ function fromFirestoreDoc(doc: any): Despesa {
   return {
     id: doc.id,
     companyId: doc.companyId,
+    materialId: doc.materialId,
     descricao: doc.descricao ?? '',
     valor: doc.valor ?? 0,
     categoria: doc.categoria ?? 'Outros',

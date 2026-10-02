@@ -17,7 +17,10 @@ import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/contexts/auth';
 import { getSalesByDate, getAllSales } from '@/services/sale-service';
 import { getDespesas, type Despesa } from '@/services/despesa-service';
+import { getMaterials } from '@/services/material-service';
+import { getProdutos } from '@/services/estoque-storage';
 import { formatCurrency } from '@/utils/format';
+import { convertToBase } from '@/utils/units';
 
 function getMonthRange(ref: Date): { start: Date; end: Date } {
   const start = new Date(ref);
@@ -66,18 +69,24 @@ export default function FinanceiroScreen() {
   const [monthSales, setMonthSales] = useState<any[]>([]);
   const [allSales, setAllSales] = useState<any[]>([]);
   const [despesas, setDespesas] = useState<Despesa[]>([]);
+  const [materials, setMaterials] = useState<any[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
 
   const loadData = useCallback(async () => {
     if (!companyId) return;
     setLoading(true);
-    const [salesData, allSalesData, despesasData] = await Promise.all([
+    const [salesData, allSalesData, despesasData, materialsData, productsData] = await Promise.all([
       getSalesInPeriod(companyId, referenceDate).catch(() => []),
       getAllSales(companyId).catch(() => []),
       getDespesas(companyId),
+      getMaterials(companyId),
+      getProdutos(companyId),
     ]);
     setMonthSales(salesData);
     setAllSales(allSalesData);
     setDespesas(despesasData);
+    setMaterials(materialsData);
+    setProducts(productsData);
     setLoading(false);
   }, [companyId, referenceDate]);
 
@@ -86,6 +95,18 @@ export default function FinanceiroScreen() {
       loadData();
     }, [loadData])
   );
+
+  const totalMaterialValue = useMemo(() => {
+    // precoCompra já é o valor total investido no estoque atual
+    return materials.reduce((sum, m) => sum + (m.precoCompra || 0), 0);
+  }, [materials]);
+
+  const totalProductValue = useMemo(() => {
+    return products.reduce((sum, p) => {
+      const qty = Math.max(0, p.estoqueAtual || 0);
+      return sum + (qty * (p.precoVenda || 0));
+    }, 0);
+  }, [products]);
 
   const receitasRecebidas = useMemo(() => {
     return monthSales.filter(isPaid).reduce((sum, s) => sum + s.totalAmount, 0);
@@ -158,8 +179,10 @@ export default function FinanceiroScreen() {
   const cards = [
     { key: 'recebidas', label: 'Receitas Recebidas', value: receitasRecebidas, color: '#C4956A' },
     { key: 'areceber', label: 'Receitas a Receber', value: receitasAReceber, color: '#F59E0B' },
-    { key: 'despesas', label: 'Despesas Pagas', value: despesasPagas, color: '#DC2626' },
+    { key: 'despesas', label: 'Despesas Pagas', value: despesasPagas, color: '#DC2626', route: '/pagamentos' },
     { key: 'apagar', label: 'Despesas a Pagar', value: despesasAPagar, color: '#6B7280', route: '/pagamentos' },
+    { key: 'materiais', label: 'Valor em Estoque', value: totalMaterialValue, color: '#10B981' },
+    { key: 'produtos', label: 'Valor em Produtos', value: totalProductValue, color: '#8B5CF6' },
   ];
 
   return (
@@ -296,15 +319,15 @@ export default function FinanceiroScreen() {
                 <ThemedText style={styles.sectionTitle}>Receitas Diárias</ThemedText>
                 <ThemedView style={styles.chartCard}>
                   <View style={styles.chartBars}>
-                    {dailyRevenue.map((r, idx) => (
+                    {dailyRevenue.slice(-5).map((r, idx, arr) => (
                       <View key={r.day} style={styles.chartCol}>
-                        <ThemedText style={styles.chartValue}>{formatCurrency(r.value)}</ThemedText>
+                        <ThemedText style={styles.chartValue} numberOfLines={1} adjustsFontSizeToFit>{formatCurrency(r.value)}</ThemedText>
                         <View
                           style={[
                             styles.chartBar,
                             {
                               height: Math.max((r.value / maxDailyRevenue) * 85, 3),
-                              backgroundColor: idx === dailyRevenue.length - 1 ? '#C4956A' : theme.textSecondary,
+                              backgroundColor: idx === arr.length - 1 ? '#C4956A' : theme.textSecondary,
                             },
                           ]}
                         />
@@ -432,7 +455,7 @@ const styles = StyleSheet.create({
   chartCol: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', gap: Spacing.one },
   chartBar: { width: 24, borderRadius: Spacing.one },
   chartLabel: { fontSize: 11, lineHeight: 14, opacity: 0.5 },
-  chartValue: { fontSize: 9, fontWeight: '600', opacity: 0.6, marginBottom: 2 },
+  chartValue: { fontSize: 10, fontWeight: '600', opacity: 0.6, marginBottom: 2, textAlign: 'center' },
 
   debtRow: {
     flexDirection: 'row',

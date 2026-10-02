@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -35,6 +35,7 @@ import { convertToBase, sameType, formatQuantity, UNITS } from '@/utils/units';
 import { formatCurrency } from '@/utils/format';
 import { saveProduto, getProdutos } from '@/services/estoque-storage';
 import { updateMaterial } from '@/services/material-service';
+import { createLote, consumirEstoqueFEFO, gerarCodigoLote, listAllLotesByProduct } from '@/services/lote-service';
 
 type DraftItem = RecipeItem & { _tempQty?: string };
 
@@ -44,9 +45,10 @@ export default function ReceitaFormScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const companyId = user?.uid ?? '';
-  const { id, produce } = useLocalSearchParams<{ id?: string; produce?: string }>();
+  const { id, produce, loteId } = useLocalSearchParams<{ id?: string; produce?: string; loteId?: string }>();
   const isEdit = Boolean(id);
   const isProduce = produce === 'true';
+  const isLoteEdit = Boolean(loteId);
 
   const handleBack = useCallback(() => {
     router.replace('/estoque' as any);
@@ -79,12 +81,46 @@ export default function ReceitaFormScreen() {
     setMaterials(mats);
     if (isEdit && id) {
       const rec = await getRecipe(id).catch(() => null);
-      if (rec) {
+      let recDataLoaded = false;
+      
+      if (isLoteEdit && loteId) {
+        const { getLote } = await import('@/services/lote-service');
+        const lote = await getLote(loteId);
+        if (lote) {
+          setNome(`Lote ${lote.codigo} - Edição`);
+          setRendimento(String(lote.quantidadeInicial));
+          if (rec) setUnidadeRendimento(rec.unidadeRendimento);
+          
+          if (lote.itensSnapshot && lote.itensSnapshot.length > 0) {
+            setItens(lote.itensSnapshot.map(i => ({ ...i, _tempQty: String(i.quantidade) })));
+          } else if (rec) {
+            setItens(rec.itens.map(i => ({ ...i, _tempQty: String(i.quantidade) })) || []);
+          }
+          
+          setTipoProduto('receita');
+          
+          if (lote.custosAdicionaisSnapshot !== undefined) {
+             // In calcRecipeCost, custosAdicionais is used directly, but we only have percentage input
+             // For simplicity, we just leave percentage empty or calculate it back if we want
+             // But since we just need it to be able to save, we'll let user type a new percentage if they want to recalculate
+             // If we want to exactly match the snapshot's percentage, we'd need to save the percentage itself.
+          } else if (rec && rec.percentualCustosAdicionais !== undefined) {
+            setPercentualCustosAdicionais(String(rec.percentualCustosAdicionais).replace('.', ','));
+          }
+          recDataLoaded = true;
+        }
+      }
+
+      if (rec && !recDataLoaded) {
         setNome(rec.nome);
         setRendimento(isProduce ? '' : String(rec.rendimento ?? ''));
         setUnidadeRendimento(rec.unidadeRendimento);
         setLucroEsperado(String(rec.valorLucro ?? ''));
-        setItens(rec.itens.map(i => ({ ...i, _tempQty: String(i.quantidade) })) || []);
+        if (isProduce) {
+          setItens(rec.itens.map(i => ({ ...i, _tempQty: String(i.quantidade) })) || []);
+        } else {
+          setItens(rec.itens.map(i => ({ ...i, _tempQty: String(i.quantidade) })) || []);
+        }
         if (rec.custoFixo && rec.custoFixo > 0 && rec.itens.length === 0) {
           setTipoProduto('revenda');
         } else {
@@ -96,7 +132,6 @@ export default function ReceitaFormScreen() {
         if (rec.percentualCustosAdicionais !== undefined) {
           setPercentualCustosAdicionais(String(rec.percentualCustosAdicionais).replace('.', ','));
         } else if (rec.custosAdicionais && rec.custoTotal) {
-          // custoMateriais sem custo fixo
           const custoMateriais = (rec.custoTotal ?? 0) - (rec.custosAdicionais ?? 0) - (rec.custoFixo ?? 0);
           if (custoMateriais > 0) {
             const pct = ((rec.custosAdicionais ?? 0) / custoMateriais) * 100;
@@ -116,7 +151,7 @@ export default function ReceitaFormScreen() {
       }
     }
     setLoading(false);
-  }, [companyId, id, isEdit]);
+  }, [companyId, id, isEdit, isLoteEdit, loteId, isProduce]);
 
   useEffect(() => {
     loadData();
@@ -183,14 +218,24 @@ export default function ReceitaFormScreen() {
     setItens((prev) => prev.filter((_, i) => i !== index));
   }
 
+  const isSubmitting = useRef(false);
+
   async function handleSave() {
-    if (saving) return;
-    if (!companyId) return;
-    if (!nome.trim()) {
-      Alert.alert('Campo obrigatório', 'Preencha o nome do produto.');
+    if (saving || isSubmitting.current) return;
+    isSubmitting.current = true;
+    setSaving(true);
+    
+    if (!companyId) {
+      isSubmitting.current = false;
+      setSaving(false);
       return;
     }
-    setSaving(true);
+    if (!nome.trim()) {
+      Alert.alert('Campo obrigatório', 'Preencha o nome do produto.');
+      isSubmitting.current = false;
+      setSaving(false);
+      return;
+    }
     try {
       const payloadItens = tipoProduto === 'receita' ? itens.map(({ materialId, quantidade, unidade }) => ({ materialId, quantidade, unidade })) : [];
       const payload = {
@@ -209,10 +254,49 @@ export default function ReceitaFormScreen() {
         custoPorUnidade: breakdown.custoPorUnidade,
         precoSugerido: breakdown.precoSugerido,
       };
+
+      if (isLoteEdit && loteId && id) {
+        const { updateLote, getLote } = await import('@/services/lote-service');
+        const lote = await getLote(loteId);
+        if (lote) {
+           const diff = payload.rendimento - lote.quantidadeInicial;
+           const newQuantidadeAtual = lote.quantidadeAtual + diff;
+           
+           await updateLote(loteId, {
+             quantidadeInicial: payload.rendimento,
+             quantidadeAtual: newQuantidadeAtual,
+             custoUnitario: payload.custoPorUnidade,
+             itensSnapshot: payload.itens,
+             custosAdicionaisSnapshot: payload.percentualCustosAdicionais,
+             ativo: newQuantidadeAtual > 0,
+           });
+           
+           if (diff !== 0) {
+              const produtos = await getProdutos(companyId);
+              const existingProd = produtos.find(p => p.id === id);
+              if (existingProd) {
+                 await saveProduto({
+                   ...existingProd,
+                   estoqueAtual: (existingProd.estoqueAtual ?? 0) + diff,
+                 });
+              }
+           }
+        }
+        Alert.alert('Lote atualizado', `Novo rendimento: ${payload.rendimento}`);
+        isSubmitting.current = false;
+        setSaving(false);
+        handleBack();
+        return;
+      }
+
       let recipeId = id;
       if (isEdit && id) {
-        await updateRecipe(id, payload);
-        Alert.alert('Produto atualizado', nome.trim());
+        if (!isProduce) {
+          await updateRecipe(id, payload);
+          Alert.alert('Produto atualizado', nome.trim());
+        } else {
+          Alert.alert('Estoque adicionado', nome.trim());
+        }
       } else {
         recipeId = await createRecipe(payload);
         Alert.alert('Produto criado', nome.trim());
@@ -222,9 +306,11 @@ export default function ReceitaFormScreen() {
         const produtos = await getProdutos(companyId);
         const existingProd = produtos.find(p => p.id === recipeId);
         
-        let newQty = payload.rendimento;
+        let newQty = existingProd?.estoqueAtual ?? 0;
         if (isEdit) {
-          newQty = (existingProd?.quantidade ?? 0) + (isProduce ? payload.rendimento : 0);
+          newQty = (existingProd?.estoqueAtual ?? 0) + (isProduce ? payload.rendimento : 0);
+        } else {
+          newQty = payload.rendimento;
         }
         await saveProduto({
           id: recipeId,
@@ -233,7 +319,7 @@ export default function ReceitaFormScreen() {
           nome: payload.nome,
           categoria: 'Outros',
           unidade: payload.unidadeRendimento as import('@/services/estoque-storage').UnidadeMedida,
-          quantidade: newQty,
+          estoqueAtual: newQty,
           custo: payload.custoPorUnidade,
           precoVenda: Number(precoVendaFinal.replace(/\./g, '').replace(',', '.')) || payload.precoSugerido,
           estoqueMinimo: existingProd?.estoqueMinimo ?? 0,
@@ -250,16 +336,48 @@ export default function ReceitaFormScreen() {
         });
 
         if ((!isEdit || isProduce) && payload.rendimento > 0) {
+          // Criação do lote para o produto produzido
+          const allLotes = await listAllLotesByProduct(recipeId);
+          const codigo = gerarCodigoLote(allLotes.map(l => l.codigo), payload.nome.slice(0, 2).toUpperCase());
+          await createLote({
+            companyId,
+            productId: recipeId,
+            codigo,
+            quantidadeInicial: payload.rendimento,
+            custoUnitario: payload.custoPorUnidade,
+            dataValidade: dataValidade || '',
+            dataEntrada: new Date().toLocaleDateString('pt-BR'),
+            fornecedor: '',
+            observacao: 'Produção',
+            origem: 'produção',
+            itensSnapshot: payload.itens,
+            custosAdicionaisSnapshot: payload.percentualCustosAdicionais,
+          });
+
+          // Consumo FEFO dos materiais
           for (const item of payload.itens) {
             const material = materials.find(m => m.id === item.materialId);
             if (material) {
               const consumedBase = convertToBase(item.quantidade, item.unidade);
               const consumedCompra = consumedBase / convertToBase(1, material.unidadeCompra);
-              const updatedQty = Math.max(0, material.quantidadeCompra - consumedCompra);
-              await updateMaterial(material.id, { 
-                quantidadeCompra: updatedQty,
-                custoPorUnidadeBase: material.custoPorUnidadeBase
+              
+              const res = await consumirEstoqueFEFO(material.id, consumedCompra, {
+                tipo: 'producao',
+                motivo: `Produção de ${payload.nome}`,
+                userId: companyId,
               });
+
+              if (res.sucesso) {
+                // Atualiza o documento principal do material para refletir o consumo
+                const lotesMat = await listAllLotesByProduct(material.id);
+                const ativos = lotesMat.filter(l => l.ativo && l.quantidadeAtual > 0);
+                const matQtd = ativos.reduce((sum, l) => sum + l.quantidadeAtual, 0);
+                const matPreco = ativos.reduce((sum, l) => sum + l.quantidadeAtual * l.custoUnitario, 0);
+                await updateMaterial(material.id, { 
+                  quantidadeCompra: matQtd,
+                  precoCompra: matPreco,
+                });
+              }
             }
           }
         }
@@ -268,7 +386,7 @@ export default function ReceitaFormScreen() {
       handleBack();
     } catch (e: any) {
       Alert.alert('Erro', e?.message ?? 'Erro ao salvar receita.');
-    } finally {
+      isSubmitting.current = false;
       setSaving(false);
     }
   }
@@ -299,7 +417,7 @@ export default function ReceitaFormScreen() {
                 <ThemedText type="smallBold">Voltar</ThemedText>
               </Pressable>
               <ThemedText style={styles.headerTitle}>
-                {isProduce ? 'Adicionar Estoque' : (isEdit ? 'Editar produto' : 'Novo produto')}
+                {isProduce ? 'Adicionar Produto' : (isEdit ? 'Editar produto' : 'Novo produto')}
               </ThemedText>
               <View style={{ width: 60 }} />
             </ThemedView>

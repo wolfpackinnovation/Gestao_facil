@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Alert,
   Clipboard,
@@ -210,14 +210,19 @@ export default function NovaVendaScreen() {
     }
   }
 
+  const isSubmitting = useRef(false);
+
   async function finishSale() {
-    if (saving) return;
+    if (saving || isSubmitting.current) return;
+    isSubmitting.current = true;
+    setSaving(true);
+
     if (cart.length === 0) {
       Alert.alert('Carrinho vazio', 'Adicione pelo menos um produto.');
+      isSubmitting.current = false;
+      setSaving(false);
       return;
     }
-
-    setSaving(true);
     for (const item of cart) {
         const product = products.find((p) => p.id === item.productId);
         if (!product) continue;
@@ -226,6 +231,7 @@ export default function NovaVendaScreen() {
             'Estoque insuficiente',
             `${product.nome}: disponível ${product.estoqueAtual ?? 0} ${product.unidade}`
           );
+          isSubmitting.current = false;
           setSaving(false);
           return;
         }
@@ -313,7 +319,7 @@ export default function NovaVendaScreen() {
     } catch (e) {
       console.error('Error finishing sale', e);
       Alert.alert('Erro', 'Ocorreu um erro ao salvar a venda.');
-    } finally {
+      isSubmitting.current = false;
       setSaving(false);
     }
   }

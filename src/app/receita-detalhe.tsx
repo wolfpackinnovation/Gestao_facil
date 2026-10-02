@@ -122,7 +122,9 @@ export default function ReceitaDetalheScreen() {
             const consumedBase = convertToBase(item.quantidade, item.unidade) * mult;
             const consumedCompra = consumedBase / convertToBase(1, material.unidadeCompra);
             const newQty = Math.max(0, material.quantidadeCompra - consumedCompra);
-            await updateMaterial(material.id, { quantidadeCompra: newQty });
+            const ratio = material.quantidadeCompra > 0 ? (newQty / material.quantidadeCompra) : 0;
+            const newPreco = material.precoCompra * ratio;
+            await updateMaterial(material.id, { quantidadeCompra: newQty, precoCompra: newPreco });
           }
         }
       }

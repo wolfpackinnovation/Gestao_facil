@@ -13,7 +13,9 @@ import { useAuth } from '@/contexts/auth';
 import { getSalesByDate, getAllSales } from '@/services/sale-service';
 import { getDespesas, updateDespesa } from '@/services/despesa-service';
 import { listClients } from '@/services/client-service';
-import { formatCurrency } from '@/utils/format';
+import { getMaterials } from '@/services/material-service';
+import { getProdutos } from '@/services/estoque-storage';
+import { formatCurrency, formatQuantity } from '@/utils/format';
 
 const MONTHS = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -36,6 +38,8 @@ export default function FinanceiroDetalheScreen() {
   const [allSales, setAllSales] = useState<any[]>([]);
   const [despesas, setDespesas] = useState<any[]>([]);
   const [clients, setClients] = useState<any[]>([]);
+  const [materials, setMaterials] = useState<any[]>([]);
+  const [produtosEstoque, setProdutosEstoque] = useState<any[]>([]);
 
   const currentMonth = referenceDate.getMonth();
   const currentYear = referenceDate.getFullYear();
@@ -43,16 +47,20 @@ export default function FinanceiroDetalheScreen() {
   const loadData = useCallback(async () => {
     if (!companyId) return;
     setLoading(true);
-    const [salesData, allSalesData, despesasData, clientsData] = await Promise.all([
+    const [salesData, allSalesData, despesasData, clientsData, materialsData, produtosData] = await Promise.all([
       getSalesInPeriod(companyId, referenceDate).catch(() => []),
       getAllSales(companyId).catch(() => []),
       getDespesas(companyId),
       listClients(companyId),
+      getMaterials(companyId).catch(() => []),
+      getProdutos(companyId).catch(() => []),
     ]);
     setMonthSales(salesData);
     setAllSales(allSalesData);
     setDespesas(despesasData);
     setClients(clientsData ?? []);
+    setMaterials(materialsData);
+    setProdutosEstoque(produtosData);
     setLoading(false);
   }, [companyId, referenceDate]);
 
@@ -74,6 +82,8 @@ export default function FinanceiroDetalheScreen() {
     areceber: 'Receitas a Receber',
     despesas: 'Despesas Pagas',
     apagar: 'Despesas a Pagar',
+    materiais: 'Valor em Estoque',
+    produtos: 'Valor em Produtos',
   }[type] || 'Detalhes';
 
   const items = useMemo(() => {
@@ -131,10 +141,31 @@ export default function FinanceiroDetalheScreen() {
           };
         });
       }
+      case 'materiais':
+        return [...materials]
+          .sort((a, b) => (b.precoCompra || 0) - (a.precoCompra || 0))
+          .map((m) => ({
+            id: m.id,
+            desc: m.nome,
+            sub: `${formatQuantity(m.quantidadeCompra || 0)} ${m.unidadeCompra} em estoque`,
+            amount: m.precoCompra || 0,
+            color: '#10B981',
+          }));
+      case 'produtos':
+        return [...produtosEstoque]
+          .filter(p => (p.estoqueAtual || 0) > 0)
+          .sort((a, b) => ((b.estoqueAtual || 0) * (b.precoVenda || 0)) - ((a.estoqueAtual || 0) * (a.precoVenda || 0)))
+          .map((p) => ({
+            id: p.id,
+            desc: p.nome,
+            sub: `${formatQuantity(Math.max(0, p.estoqueAtual || 0))} un — R$ ${(p.precoVenda || 0).toFixed(2)}/un`,
+            amount: Math.max(0, p.estoqueAtual || 0) * (p.precoVenda || 0),
+            color: '#8B5CF6',
+          }));
       default:
         return [];
     }
-  }, [type, monthSales, allSales, despesas, referenceDate]);
+  }, [type, monthSales, allSales, despesas, referenceDate, materials, produtosEstoque]);
 
   return (
     <ThemedView style={styles.container}>
@@ -174,7 +205,12 @@ export default function FinanceiroDetalheScreen() {
                   <View style={styles.totalDecorCircle2} />
                 </View>
                 <ThemedText style={styles.totalLabel}>
-                  {type === 'recebidas' ? 'Total Recebido' : type === 'areceber' ? 'Total a Receber' : type === 'apagar' ? 'Total a Pagar' : 'Total de Despesas'}
+                  {type === 'recebidas' ? 'Total Recebido'
+                    : type === 'areceber' ? 'Total a Receber'
+                    : type === 'apagar' ? 'Total a Pagar'
+                    : type === 'materiais' ? 'Total em Estoque'
+                    : type === 'produtos' ? 'Total em Produtos'
+                    : 'Total de Despesas'}
                 </ThemedText>
                 <ThemedText style={styles.totalValue}>
                   {formatCurrency(items.reduce((sum, i) => sum + i.amount, 0))}

@@ -6,6 +6,7 @@ import {
   Pressable,
   KeyboardAvoidingView,
   ActivityIndicator,
+  Alert,
 } from 'react-native'
 import { Link, useRouter } from 'expo-router'
 
@@ -20,7 +21,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const { signIn } = useAuth()
+  const { signIn, resetPassword } = useAuth()
   const colors = useTheme()
   const router = useRouter()
 
@@ -35,7 +36,51 @@ export default function LoginScreen() {
       await signIn(email.trim(), password)
       router.replace('/')
     } catch (e: any) {
-      setError(e.message || 'Erro ao fazer login.')
+      let friendlyMessage = 'Não foi possível fazer login. Verifique sua conexão e tente novamente.'
+      
+      const errorCode = e?.code || '';
+      const errorMessage = e?.message || '';
+
+      if (
+        errorCode === 'auth/invalid-credential' || 
+        errorCode === 'auth/user-not-found' || 
+        errorCode === 'auth/wrong-password' ||
+        errorMessage.includes('invalid-credential') ||
+        errorMessage.includes('wrong-password')
+      ) {
+        friendlyMessage = 'E-mail ou senha incorretos. Por favor, tente novamente.'
+      } else if (errorCode === 'auth/invalid-email' || errorMessage.includes('invalid-email')) {
+        friendlyMessage = 'O endereço de e-mail informado não é válido.'
+      } else if (errorCode === 'auth/too-many-requests' || errorMessage.includes('too-many-requests')) {
+        friendlyMessage = 'Muitas tentativas sem sucesso. Por segurança, tente novamente mais tarde.'
+      }
+      
+      setError(friendlyMessage)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleResetPassword = async () => {
+    if (!email.trim()) {
+      Alert.alert('Recuperar Senha', 'Por favor, preencha o seu e-mail no campo acima para recuperar a senha.')
+      return
+    }
+    setSubmitting(true)
+    try {
+      await resetPassword(email.trim())
+      Alert.alert('E-mail enviado!', 'Verifique sua caixa de entrada para redefinir sua senha.')
+    } catch (e: any) {
+      const errorCode = e?.code || '';
+      const errorMessage = e?.message || '';
+      
+      if (errorCode === 'auth/user-not-found' || errorMessage.includes('user-not-found')) {
+        Alert.alert('Erro', 'Usuário não encontrado. Verifique o e-mail digitado.')
+      } else if (errorCode === 'auth/invalid-email' || errorMessage.includes('invalid-email')) {
+        Alert.alert('Erro', 'O e-mail digitado é inválido.')
+      } else {
+        Alert.alert('Erro', 'Não foi possível enviar o e-mail de recuperação. Tente novamente mais tarde.')
+      }
     } finally {
       setSubmitting(false)
     }
@@ -94,10 +139,16 @@ export default function LoginScreen() {
             editable={!submitting}
           />
 
+          <Pressable onPress={handleResetPassword} disabled={submitting} style={{ alignSelf: 'flex-end', marginTop: -4 }}>
+            <ThemedText type="small" style={{ color: '#C4956A', fontWeight: '600' }}>
+              Esqueceu a senha?
+            </ThemedText>
+          </Pressable>
+
           <Pressable
             style={({ pressed }) => [
               styles.button,
-              { backgroundColor: '#C4956A' },
+              { backgroundColor: '#C4956A', marginTop: Spacing.two },
               pressed && styles.buttonPressed,
               submitting && styles.buttonDisabled,
             ]}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -25,8 +25,10 @@ import {
   getMaterial,
   createMaterial,
   updateMaterial,
+  calcCustoPorUnidadeBase,
   type CategoriaMaterial,
 } from '@/services/material-service';
+import { createDespesa } from '@/services/despesa-service';
 import { UNITS, getUnit } from '@/utils/units';
 import { formatCurrency } from '@/utils/format';
 
@@ -55,8 +57,11 @@ export default function MaterialFormScreen() {
     const mat = await getMaterial(id);
     if (mat) {
       setNome(mat.nome);
-      setPreco(String(Math.round(mat.precoCompra * 100)));
-      setQuantidade(String(mat.quantidadeCompra || 1));
+      const qty = mat.quantidadeCompra || 1;
+      const calcQty = (mat.unidadeCompra === 'g' || mat.unidadeCompra === 'ml') ? (qty / 1000) : qty;
+      const unitPrice = calcQty > 0 ? (mat.precoCompra / calcQty) : 0;
+      setPreco(String(Math.round(unitPrice * 100)));
+      setQuantidade(String(qty));
       setUnidade(mat.unidadeCompra);
     }
     setLoading(false);
@@ -80,29 +85,48 @@ export default function MaterialFormScreen() {
     return text.replace(/[^0-9.,]/g, '');
   }
 
+  const isSubmitting = useRef(false);
+
   async function handleSave() {
-    if (saving) return;
-    if (!companyId) return;
+    if (saving || isSubmitting.current) return;
+    isSubmitting.current = true;
+    setSaving(true);
+
+    if (!companyId) {
+      isSubmitting.current = false;
+      setSaving(false);
+      return;
+    }
     if (!nome.trim()) {
       Alert.alert('Campo obrigatório', 'Preencha o nome do material.');
+      isSubmitting.current = false;
+      setSaving(false);
       return;
     }
     const parsedPreco = Number(preco) / 100;
     const parsedQtd = Number(quantidade.replace(',', '.'));
+    
     if (!isFinite(parsedPreco) || parsedPreco <= 0) {
-      Alert.alert('Preço inválido', 'Informe o preço pago pela embalagem.');
+      Alert.alert('Preço inválido', 'Informe o valor total pago.');
+      isSubmitting.current = false;
+      setSaving(false);
       return;
     }
     if (!isFinite(parsedQtd) || parsedQtd <= 0) {
-      Alert.alert('Quantidade inválida', 'Informe o conteúdo da embalagem.');
+      Alert.alert('Quantidade inválida', 'Informe o tamanho da embalagem.');
+      isSubmitting.current = false;
+      setSaving(false);
       return;
     }
     if (!getUnit(unidade)) {
       Alert.alert('Unidade inválida', 'Selecione uma unidade de medida válida.');
+      isSubmitting.current = false;
+      setSaving(false);
       return;
     }
 
-    setSaving(true);
+    const gastoTotal = parsedPreco * ((unidade === 'g' || unidade === 'ml') ? (parsedQtd / 1000) : parsedQtd);
+
     try {
       const payload = {
         companyId,
@@ -110,21 +134,52 @@ export default function MaterialFormScreen() {
         categoria: 'Outros' as CategoriaMaterial,
         unidadeCompra: unidade,
         quantidadeCompra: parsedQtd,
-        precoCompra: parsedPreco,
+        precoCompra: gastoTotal,
+        custoPorUnidadeBase: calcCustoPorUnidadeBase(gastoTotal, parsedQtd, unidade),
       };
       if (isEdit && id) {
         await updateMaterial(id, payload);
         Alert.alert('Material atualizado', nome.trim());
       } else {
-        await createMaterial(payload);
+        const matId = await createMaterial(payload);
+        await createDespesa({
+          companyId,
+          materialId: matId,
+          descricao: `Estoque: ${nome.trim()}`,
+          valor: gastoTotal,
+          categoria: 'Compra de Produtos',
+          data: new Date().toISOString().slice(0, 10),
+          observacao: `Estoque inicial de ${parsedQtd} ${unidade}`,
+          pago: true,
+        });
+
+        // Cria o lote inicial
+        const { createLote, listAllLotesByProduct, gerarCodigoLote } = await import('@/services/lote-service');
+        const allLotes = await listAllLotesByProduct(matId);
+        const codigo = gerarCodigoLote(allLotes.map(l => l.codigo), nome.slice(0, 2).toUpperCase());
+        await createLote({
+          companyId,
+          productId: matId,
+          codigo,
+          quantidadeInicial: parsedQtd,
+          custoUnitario: parsedQtd > 0 ? gastoTotal / parsedQtd : 0,
+          dataValidade: '',
+          dataEntrada: new Date().toLocaleDateString('pt-BR'),
+          fornecedor: '',
+          observacao: 'Estoque inicial',
+          origem: 'reposicao',
+        });
+
         Alert.alert('Material criado', nome.trim());
       }
       handleBack();
     } catch (e: any) {
       Alert.alert('Erro', e?.message ?? 'Erro ao salvar material.');
-    } finally {
+      isSubmitting.current = false;
       setSaving(false);
     }
+    // We don't reset `isSubmitting` and `saving` on success because we navigate away (handleBack)
+    // and resetting it might allow another click during the navigation transition.
   }
 
   if (loading) {
@@ -170,7 +225,7 @@ export default function MaterialFormScreen() {
             </ThemedView>
 
             <ThemedView style={styles.fieldGroup}>
-              <ThemedText type="smallBold" style={styles.fieldLabel}>Preço</ThemedText>
+              <ThemedText type="smallBold" style={styles.fieldLabel}>Preço base (por Kg, Litro ou Unidade)</ThemedText>
               <View style={styles.priceWrapper}>
                 <TextInput
                   style={[styles.input, styles.priceInput, { color: theme.text, backgroundColor: theme.backgroundElement }]}
@@ -180,16 +235,11 @@ export default function MaterialFormScreen() {
                   value={formatBRL(preco)}
                   onChangeText={(t) => setPreco(t.replace(/\D/g, ''))}
                 />
-                {preco.trim() !== '' && Number(preco) > 0 && (
-                  <ThemedText type="small" themeColor="textSecondary" style={styles.pricePreview}>
-                    = {formatCurrency(Number(preco) / 100)}
-                  </ThemedText>
-                )}
               </View>
             </ThemedView>
 
             <ThemedView style={styles.fieldGroup}>
-              <ThemedText type="smallBold" style={styles.fieldLabel}>Conteúdo total da embalagem</ThemedText>
+              <ThemedText type="smallBold" style={styles.fieldLabel}>Quantidade que você comprou</ThemedText>
               <View style={styles.contentRow}>
                 <TextInput
                   style={[styles.input, styles.contentInput, { color: theme.text, backgroundColor: theme.backgroundElement }]}
@@ -207,10 +257,24 @@ export default function MaterialFormScreen() {
                     {unidade}
                   </ThemedText>
                   <ThemedText style={[styles.unitButtonHint, { color: theme.textSecondary }]}>
-                    unidade
+                    {getUnit(unidade)?.label.includes('(') 
+                      ? getUnit(unidade)?.label.split('(')[1].replace(')', '') 
+                      : getUnit(unidade)?.label || 'unidade'}
                   </ThemedText>
                 </Pressable>
               </View>
+
+              {preco.trim() !== '' && Number(preco) > 0 && quantidade.trim() !== '' && Number(quantidade.replace(',', '.')) > 0 && (
+                <View style={{ marginTop: Spacing.two, padding: Spacing.three, backgroundColor: theme.backgroundElement, borderRadius: Spacing.two, alignItems: 'center' }}>
+                  <ThemedText type="smallBold" themeColor="textSecondary">Gasto total da compra</ThemedText>
+                  <ThemedText style={{ fontSize: 24, fontWeight: '700', color: theme.primary, marginTop: Spacing.one }}>
+                    {formatCurrency(
+                      (Number(preco) / 100) * 
+                      ((unidade === 'g' || unidade === 'ml') ? Number(quantidade.replace(',', '.')) / 1000 : Number(quantidade.replace(',', '.')))
+                    )}
+                  </ThemedText>
+                </View>
+              )}
             </ThemedView>
 
             <Pressable

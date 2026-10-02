@@ -20,6 +20,8 @@ function fromFirestoreDoc(doc: any): Lote {
     fornecedor: doc.fornecedor ?? '',
     observacao: doc.observacao,
     origem: doc.origem,
+    itensSnapshot: doc.itensSnapshot,
+    custosAdicionaisSnapshot: doc.custosAdicionaisSnapshot,
     ativo: doc.ativo ?? true,
     createdAt: doc.createdAt?.toDate?.()?.toISOString() ?? doc.createdAt ?? new Date().toISOString(),
     updatedAt: doc.updatedAt?.toDate?.()?.toISOString() ?? doc.updatedAt,
@@ -63,6 +65,8 @@ export async function createLote(
   }
   if (data.observacao) lote.observacao = data.observacao
   if (data.origem) lote.origem = data.origem
+  if (data.itensSnapshot) lote.itensSnapshot = data.itensSnapshot
+  if (data.custosAdicionaisSnapshot !== undefined) lote.custosAdicionaisSnapshot = data.custosAdicionaisSnapshot
   await createWithId<Lote>(Collections.lotes, id, lote as any)
 
   await createLoteMovimento({

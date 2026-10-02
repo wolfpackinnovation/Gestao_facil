@@ -218,6 +218,8 @@ export interface Lote extends BaseEntity {
   observacao?: string
   ativo: boolean
   origem?: string
+  itensSnapshot?: any[]
+  custosAdicionaisSnapshot?: number
 }
 
 export type LoteMovimentoTipo = 'entrada' | 'saida' | 'venda' | 'ajuste' | 'perda'

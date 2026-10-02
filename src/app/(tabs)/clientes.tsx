@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import {
   Alert,
   FlatList,
@@ -210,26 +210,38 @@ export default function ClientesScreen() {
     return Object.keys(newErrors).length === 0;
   }
 
-  async function handleSave() {
-    if (!validate()) return;
-    const data: Record<string, any> = {
-      companyId,
-      name: form.name.trim(),
-    };
-    if (form.codigo.trim()) data.codigo = form.codigo.trim();
-    const optionalFields = ['email', 'phone', 'address', 'addressNumber', 'city', 'state'] as const;
-    for (const field of optionalFields) {
-      const val = form[field].trim();
-      if (val) data[field] = val;
-    }
+  const isSubmitting = useRef(false);
 
-    if (editingId) {
-      await ClientService.updateClient(editingId, data);
-    } else {
-      await ClientService.createClient(data as any);
+  async function handleSave() {
+    if (isSubmitting.current) return;
+    if (!validate()) return;
+    
+    isSubmitting.current = true;
+    try {
+      const data: Record<string, any> = {
+        companyId,
+        name: form.name.trim(),
+      };
+      if (form.codigo.trim()) data.codigo = form.codigo.trim();
+      const optionalFields = ['email', 'phone', 'address', 'addressNumber', 'city', 'state'] as const;
+      for (const field of optionalFields) {
+        const val = form[field].trim();
+        if (val) data[field] = val;
+      }
+
+      if (editingId) {
+        await ClientService.updateClient(editingId, data);
+      } else {
+        await ClientService.createClient(data as any);
+      }
+      await loadClients();
+      closeModal();
+    } catch (error) {
+      console.error('Error saving client:', error);
+      Alert.alert('Erro', 'Ocorreu um erro ao salvar o cliente.');
+    } finally {
+      isSubmitting.current = false;
     }
-    await loadClients();
-    closeModal();
   }
 
   function confirmDelete(id: string, nome: string) {

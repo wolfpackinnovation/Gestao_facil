@@ -26,13 +26,13 @@ import { PremiumModal } from '@/components/premium-modal';
 import {
   getProdutos,
   saveProduto,
-  formatCurrency,
   CATEGORIAS,
   UNIDADES,
   type Produto,
   type UnidadeMedida,
 } from '@/services/estoque-storage';
-import { formatQuantity } from '@/utils/format';
+import { formatCurrency, formatQuantity } from '@/utils/format';
+import { createLote, consumirEstoqueFEFO, gerarCodigoLote, listAllLotesByProduct } from '@/services/lote-service';
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -169,13 +169,39 @@ export default function EstoqueScreen() {
     }
 
     const novaQtd = movementType === 'entrada'
-      ? (movementProduct.quantidade || 0) + qty
-      : (movementProduct.quantidade || 0) - qty;
+      ? (movementProduct.estoqueAtual || 0) + qty
+      : (movementProduct.estoqueAtual || 0) - qty;
     
+    // Atualiza o documento principal do produto
     await saveProduto({
       ...movementProduct,
-      quantidade: novaQtd
+      estoqueAtual: novaQtd
     });
+
+    // Sincroniza com o sistema de Lotes
+    if (movementType === 'entrada') {
+      const allLotes = await listAllLotesByProduct(movementProduct.id);
+      const codigo = gerarCodigoLote(allLotes.map(l => l.codigo), movementProduct.nome.slice(0, 2).toUpperCase());
+      await createLote({
+        companyId: movementProduct.companyId,
+        productId: movementProduct.id,
+        codigo,
+        quantidadeInicial: qty,
+        custoUnitario: movementProduct.custoPorUnidade ?? movementProduct.custoTotal ?? 0,
+        dataValidade: '',
+        dataEntrada: new Date().toLocaleDateString('pt-BR'),
+        fornecedor: '',
+        observacao: 'Ajuste manual de entrada',
+        origem: 'produção',
+      });
+    } else {
+      await consumirEstoqueFEFO(movementProduct.id, qty, { 
+        tipo: 'ajuste', 
+        motivo: 'Ajuste manual de saída', 
+        userId: movementProduct.companyId 
+      });
+    }
+
     setMovementModal(false);
     await loadProdutos();
   }
@@ -239,16 +265,8 @@ export default function EstoqueScreen() {
             onPress={() => router.push(`/receita-form?id=${item.id}&produce=true` as any)}
             style={[styles.actionButton, { backgroundColor: '#C4956A18' }]}
           >
-            <ThemedText style={[styles.actionButtonText, { color: '#C4956A' }]}>Adicionar Estoque</ThemedText>
+            <ThemedText style={[styles.actionButtonText, { color: '#C4956A' }]}>Repor Estoque</ThemedText>
           </Pressable>
-          {(item.estoqueAtual ?? 0) > 0 && (
-            <Pressable
-              onPress={() => openMovement('saida', item)}
-              style={[styles.actionButton, { backgroundColor: '#DC262618' }]}
-            >
-              <ThemedText style={[styles.actionButtonText, { color: '#DC2626' }]}>Saída</ThemedText>
-            </Pressable>
-          )}
         </ThemedView>
       </ThemedView>
     );
@@ -329,7 +347,7 @@ export default function EstoqueScreen() {
               <ThemedView>
                 <ThemedView style={styles.header}>
                   <ThemedText type="title" style={styles.headerTitle}>
-                    Estoque
+                    Produtos
                   </ThemedText>
                   <Pressable onPress={openNew} style={styles.addButton}>
                     <ThemedText style={styles.addButtonText}>+ Novo Produto</ThemedText>

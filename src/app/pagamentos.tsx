@@ -18,6 +18,7 @@ import { DateNavigator } from '@/components/date-navigator';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Loading } from '@/utils/loading';
+import { formatDateInput } from '@/utils/format';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/contexts/auth';
@@ -47,6 +48,9 @@ function filterDividasByPeriod(dividas: Despesa[], ref: Date): Despesa[] {
   const startStr = start.toISOString().slice(0, 10);
   const endStr = end.toISOString().slice(0, 10);
   return dividas.filter((d) => {
+    // Sempre mostrar se tiver vencimento e não estiver pago (pendente)
+    if (d.vencimento && !d.pago) return true;
+
     const dateStr = d.vencimento ? d.vencimento : d.data?.slice(0, 10);
     if (!dateStr) return false;
     if (d.vencimento) {
@@ -82,7 +86,7 @@ export default function PagamentosScreen() {
     if (!companyId) return;
     setLoading(true);
     const data = await getDespesas(companyId);
-    setDespesas(data);
+    setDespesas(data.filter(d => d.categoria !== 'Compra de Produtos'));
     setLoading(false);
   }, [companyId]);
 

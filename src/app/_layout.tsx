@@ -16,12 +16,12 @@ const hideHeaderRoutes = new Set(['/login', '/signup', '/perfil', '/produto-deta
 
 const routeTitles: Record<string, string> = {
   'index': 'GestFacil',
-  'estoque': 'Estoque',
+  'estoque': 'Produtos',
   'vendas': 'Vendas',
   'caixa': 'Caixa',
   'financeiro': 'Financeiro',
   'receitas': 'Receitas',
-  'materiais': 'Materiais',
+  'materiais': 'Estoque',
   'material-detalhe': 'Material',
   'clientes': 'Clientes',
   'configuracao': 'Configuração',
@@ -34,6 +34,7 @@ const routeTitles: Record<string, string> = {
   'termos-de-uso': 'Termos de Uso',
   'politica-privacidade': 'Política de Privacidade',
   'pagamentos': 'Pagamentos',
+  'despesas': 'Compras de Estoque',
   'nova-venda': 'Nova Venda',
   'mais': 'Mais',
   'explore': 'Explorar',

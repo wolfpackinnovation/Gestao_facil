@@ -17,7 +17,9 @@ import { getAllSales, getSaleItems } from '@/services/sale-service';
 import { getDespesas } from '@/services/despesa-service';
 import { listClients } from '@/services/client-service';
 import { getProdutos } from '@/services/estoque-storage';
+import { getMaterials } from '@/services/material-service';
 import { formatCurrency } from '@/utils/format';
+import { convertToBase } from '@/utils/units';
 
 const paymentLabels: Record<string, string> = {
   dinheiro: 'Dinheiro',
@@ -55,6 +57,7 @@ export default function RelatoriosScreen() {
   const [despesas, setDespesas] = useState<any[]>([]);
   const [clients, setClients] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
+  const [materials, setMaterials] = useState<any[]>([]);
   const [topProducts, setTopProducts] = useState<any[]>([]);
   const [topProductsRevenue, setTopProductsRevenue] = useState<any[]>([]);
   const [totalFiados, setTotalFiados] = useState<number>(0);
@@ -62,11 +65,12 @@ export default function RelatoriosScreen() {
   const loadData = useCallback(async () => {
     if (!companyId) return;
     setLoading(true);
-    const [allSalesData, despesasData, clientsData, productsData] = await Promise.all([
+    const [allSalesData, despesasData, clientsData, productsData, materialsData] = await Promise.all([
       getAllSales(companyId),
       getDespesas(companyId),
       listClients(companyId),
       getProdutos(companyId),
+      getMaterials(companyId),
     ]);
 
     const { start, end } = getMonthRange(referenceDate);
@@ -124,6 +128,7 @@ export default function RelatoriosScreen() {
     setDespesas(despesasData);
     setClients(clientsData);
     setProducts(productsData);
+    setMaterials(materialsData);
     setTopProducts(topProd);
     setTopProductsRevenue(topProdRev);
     setTotalFiados(fiadosSum);
@@ -182,6 +187,18 @@ export default function RelatoriosScreen() {
     [prevDespesasPeriodo],
   );
 
+  const totalMaterialValue = useMemo(() => {
+    // precoCompra já é o valor total investido no estoque atual
+    return materials.reduce((sum, m) => sum + (m.precoCompra || 0), 0);
+  }, [materials]);
+
+  const totalProductValue = useMemo(() => {
+    return products.reduce((sum, p) => {
+      const qty = Math.max(0, p.estoqueAtual || 0);
+      return sum + (qty * (p.precoVenda || 0));
+    }, 0);
+  }, [products]);
+
   const profit = totalRevenue - totalExpenses;
   const prevProfit = prevTotalRevenue - prevTotalExpenses;
   const profitMargin = totalRevenue > 0 ? (profit / totalRevenue) * 100 : 0;
@@ -221,7 +238,7 @@ export default function RelatoriosScreen() {
     return Object.entries(map)
       .map(([clientId, data]) => {
         const client = clients.find((c: any) => c.id === clientId);
-        return { clientId, name: client?.name ?? 'Sem cliente', ...data };
+        return { clientId, name: client?.name ?? 'Cliente Avulso', ...data };
       })
       .sort((a, b) => b.total - a.total)
       .slice(0, 5);
@@ -319,10 +336,11 @@ export default function RelatoriosScreen() {
               </View>
             </ThemedView>
             <ThemedView style={styles.summaryCard}>
-              <ThemedText type="small" themeColor="textSecondary">Margem de Lucro</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">Margem Líquida</ThemedText>
               <ThemedText style={[styles.summaryValue, { color: profitMargin >= 0 ? '#10B981' : '#DC2626' }]}>
                 {profitMargin.toFixed(1)}%
               </ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">Lucro final no bolso</ThemedText>
             </ThemedView>
             <ThemedView style={styles.summaryCard}>
               <ThemedText type="small" themeColor="textSecondary">Fiados Pendentes</ThemedText>
@@ -336,6 +354,20 @@ export default function RelatoriosScreen() {
               <ThemedText style={[styles.summaryValue, { color: '#3B82F6' }]}>
                 {sales.length > 0 ? formatCurrency(totalRevenue / sales.length) : 'R$ 0,00'}
               </ThemedText>
+            </ThemedView>
+            <ThemedView style={styles.summaryCard}>
+              <ThemedText type="small" themeColor="textSecondary">Valor em Estoque</ThemedText>
+              <ThemedText style={[styles.summaryValue, { color: '#10B981' }]}>
+                {formatCurrency(totalMaterialValue)}
+              </ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">Dinheiro investido</ThemedText>
+            </ThemedView>
+            <ThemedView style={styles.summaryCard}>
+              <ThemedText type="small" themeColor="textSecondary">Valor em Produtos</ThemedText>
+              <ThemedText style={[styles.summaryValue, { color: '#8B5CF6' }]}>
+                {formatCurrency(totalProductValue)}
+              </ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">Lucro potencial bruto</ThemedText>
             </ThemedView>
           </View>
 

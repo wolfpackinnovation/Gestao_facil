@@ -21,6 +21,8 @@ import {
 } from '@/services/material-service';
 import { formatCurrency, formatQuantity } from '@/utils/format';
 
+type FilterType = 'all' | 'available' | 'unavailable';
+
 export default function MaterialsTab() {
   const theme = useTheme();
   const router = useRouter();
@@ -30,6 +32,7 @@ export default function MaterialsTab() {
   const [loading, setLoading] = useState(true);
   const [materials, setMaterials] = useState<Material[]>([]);
   const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<FilterType>('all');
 
   const loadData = useCallback(async () => {
     if (!companyId) return;
@@ -82,27 +85,61 @@ export default function MaterialsTab() {
     <ThemedView style={styles.emptyState}>
       <Ionicons name={search ? "search" : "cube"} size={48} color={theme.textSecondary} />
       <ThemedText type="subtitle" style={styles.emptyTitle}>
-        {search ? 'Nada encontrado' : 'Nenhum material'}
+        {search ? 'Nada encontrado' : 'Nenhum item no estoque'}
       </ThemedText>
       <ThemedText type="default" themeColor="textSecondary" style={{ textAlign: 'center' }}>
         {search
-          ? `Nenhum material contém "${search}".`
-          : 'Cadastre os insumos que você usa nas receitas. Os preços cadastrados aqui alimentam o cálculo automático das receitas.'}
+          ? `Nenhum item contém "${search}".`
+          : 'Cadastre os insumos e embalagens que você tem em estoque. Os preços cadastrados aqui alimentam o cálculo automático das receitas.'}
       </ThemedText>
     </ThemedView>
   );
 
-  const filteredMaterials = search.trim() === ''
-    ? materials
-    : materials.filter((m) => m.nome.toLowerCase().includes(search.trim().toLowerCase()));
+  const sortedMaterials = [...materials].sort((a, b) => {
+    const aAvailable = a.quantidadeCompra > 0 ? 1 : 0;
+    const bAvailable = b.quantidadeCompra > 0 ? 1 : 0;
+    if (aAvailable !== bAvailable) {
+      return bAvailable - aAvailable;
+    }
+    return a.nome.localeCompare(b.nome);
+  });
+
+  let filteredMaterials = search.trim() === ''
+    ? sortedMaterials
+    : sortedMaterials.filter((m) => m.nome.toLowerCase().includes(search.trim().toLowerCase()));
+
+  if (filter === 'available') {
+    filteredMaterials = filteredMaterials.filter((m) => m.quantidadeCompra > 0);
+  } else if (filter === 'unavailable') {
+    filteredMaterials = filteredMaterials.filter((m) => m.quantidadeCompra <= 0);
+  }
+
+  const availableCount = materials.filter(m => m.quantidadeCompra > 0).length;
+  const unavailableCount = materials.filter(m => m.quantidadeCompra <= 0).length;
 
   const listHeader = (
     <ThemedView style={styles.headerContent}>
+      <ThemedView style={styles.summaryRow}>
+        <Pressable 
+          onPress={() => setFilter(filter === 'available' ? 'all' : 'available')}
+          style={[styles.summaryCard, { backgroundColor: '#22c55e18', opacity: filter === 'unavailable' ? 0.4 : 1, borderWidth: filter === 'available' ? 2 : 1, borderColor: filter === 'available' ? '#22c55e' : 'transparent' }]}
+        >
+          <ThemedText style={[styles.summaryLabel, { color: '#22c55e' }]}>DISPONÍVEIS</ThemedText>
+          <ThemedText style={[styles.summaryValue, { color: '#22c55e' }]}>{availableCount}</ThemedText>
+        </Pressable>
+        <Pressable 
+          onPress={() => setFilter(filter === 'unavailable' ? 'all' : 'unavailable')}
+          style={[styles.summaryCard, { backgroundColor: '#ef444418', opacity: filter === 'available' ? 0.4 : 1, borderWidth: filter === 'unavailable' ? 2 : 1, borderColor: filter === 'unavailable' ? '#ef4444' : 'transparent' }]}
+        >
+          <ThemedText style={[styles.summaryLabel, { color: '#ef4444' }]}>INDISPONÍVEIS</ThemedText>
+          <ThemedText style={[styles.summaryValue, { color: '#ef4444' }]}>{unavailableCount}</ThemedText>
+        </Pressable>
+      </ThemedView>
       <View style={[styles.searchWrapper, { borderColor: theme.primary, backgroundColor: theme.backgroundElement }]}>
         <Ionicons name="search" size={18} color={theme.textSecondary} />
         <TextInput
           style={[styles.searchInput, { color: theme.text }]}
-          placeholder="Buscar material..."
+          placeholder="Buscar no estoque..."
           placeholderTextColor={theme.textSecondary}
           value={search}
           onChangeText={setSearch}

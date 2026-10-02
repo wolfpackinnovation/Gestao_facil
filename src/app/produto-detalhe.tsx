@@ -12,6 +12,7 @@ import { MaxContentWidth, Spacing } from '@/constants/theme'
 import {
   getProduto,
   deleteProduto,
+  saveProduto,
   formatCurrency,
   type Produto,
 } from '@/services/estoque-storage'
@@ -20,6 +21,8 @@ import { formatQuantity } from '@/utils/format'
 import { getRecipe, type Recipe } from '@/services/recipe-service'
 import { getMaterials, updateMaterial, type Material } from '@/services/material-service'
 import { convertToBase } from '@/utils/units'
+import { listAllLotesByProduct, deleteLote, updateLote } from '@/services/lote-service'
+import type { Lote } from '@/types/schema'
 
 function todayBR(): string {
   const d = new Date();
@@ -36,6 +39,18 @@ export default function ProdutoDetalheScreen() {
   const [recipe, setRecipe] = useState<Recipe | null>(null)
   const [materials, setMaterials] = useState<Material[]>([])
   const [deductMaterials, setDeductMaterials] = useState(true)
+  const [lotes, setLotes] = useState<Lote[]>([])
+
+  // Editar lote existente
+  const [editLoteVisible, setEditLoteVisible] = useState(false);
+  const [editingLote, setEditingLote] = useState<Lote | null>(null);
+  const [editLoteQty, setEditLoteQty] = useState('');
+  const [editLoteCusto, setEditLoteCusto] = useState('');
+  const [editLoteObs, setEditLoteObs] = useState('');
+
+  // Editar Produto
+  const [editProdVisible, setEditProdVisible] = useState(false);
+  const [editProdName, setEditProdName] = useState('');
 
   const loadData = useCallback(async () => {
     if (!id) return
@@ -49,6 +64,8 @@ export default function ProdutoDetalheScreen() {
         const mats = await getMaterials(p.companyId).catch(() => [])
         setMaterials(mats)
       }
+      const allLotes = await listAllLotesByProduct(p.id).catch(() => [])
+      setLotes(allLotes.sort((a, b) => b.createdAt.localeCompare(a.createdAt)))
     }
     setLoading(false)
   }, [id])
@@ -103,7 +120,102 @@ export default function ProdutoDetalheScreen() {
     ])
   }
 
+  function handleOpenEditLote(lote: Lote) {
+    setEditingLote(lote);
+    setEditLoteQty(String(lote.quantidadeAtual).replace('.', ','));
+    setEditLoteCusto(formatBRL(String(Math.round(lote.custoUnitario * 100))));
+    setEditLoteObs(lote.observacao || '');
+    setEditLoteVisible(true);
+  }
 
+  async function handleSaveEditLote() {
+    if (!editingLote || !produto) return;
+    const qty = parseFloat(editLoteQty.replace(',', '.'));
+    const custo = editLoteCusto ? parseFloat(editLoteCusto.replace(/\D/g, '')) / 100 : editingLote.custoUnitario;
+
+    if (isNaN(qty) || qty < 0) {
+      Alert.alert('Erro', 'Informe uma quantidade válida.');
+      return;
+    }
+
+    try {
+      await updateLote(editingLote.id, {
+        quantidadeAtual: qty,
+        custoUnitario: custo,
+        observacao: editLoteObs.trim(),
+        ativo: qty > 0,
+      });
+
+      // Recalcula campo aggregado do produto
+      const updatedLotes = lotes.map(l => l.id === editingLote.id ? { ...l, quantidadeAtual: qty, custoUnitario: custo, ativo: qty > 0 } : l);
+      const ativos = updatedLotes.filter(l => l.ativo && l.quantidadeAtual > 0);
+      const newQtd = ativos.reduce((sum, l) => sum + l.quantidadeAtual, 0);
+      
+      await saveProduto({
+        ...produto,
+        estoqueAtual: newQtd,
+      });
+
+      setEditLoteVisible(false);
+      setEditingLote(null);
+      await loadData();
+    } catch (e: any) {
+      Alert.alert('Erro', 'Não foi possível salvar as alterações.');
+    }
+  }
+
+  function handleExcluirLote(lote: Lote) {
+    Alert.alert(
+      `Excluir Lote ${lote.codigo}`,
+      'O estoque deste lote será removido definitivamente.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Excluir',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteLote(lote.id);
+              const remaining = lotes.filter(l => l.id !== lote.id && l.ativo && l.quantidadeAtual > 0);
+              const newQtd = remaining.reduce((sum, l) => sum + l.quantidadeAtual, 0);
+              if (produto) {
+                await saveProduto({
+                  ...produto,
+                  estoqueAtual: newQtd,
+                });
+              }
+              await loadData();
+            } catch (e: any) {
+              Alert.alert('Erro', 'Não foi possível excluir o lote.');
+            }
+          },
+        },
+      ],
+    );
+  }
+
+  async function handleSaveEditProd() {
+    if (!produto || !editProdName.trim()) {
+      Alert.alert('Erro', 'O nome do produto não pode ficar vazio.');
+      return;
+    }
+    try {
+      await saveProduto({
+        ...produto,
+        nome: editProdName.trim(),
+      });
+      // Se houver receita associada, atualiza o nome nela também
+      if (recipe) {
+        import('@/services/recipe-service').then(({ updateRecipe }) => {
+          updateRecipe(recipe.id, { nome: editProdName.trim() });
+        });
+      }
+      setEditProdVisible(false);
+      await loadData();
+    } catch (e) {
+      Alert.alert('Erro', 'Não foi possível salvar o nome.');
+    }
+  }
 
   return (
     <ThemedView style={styles.container}>
@@ -174,43 +286,73 @@ export default function ProdutoDetalheScreen() {
             </ThemedView>
           </ThemedView>
 
-          {produto.precoSugerido !== undefined && (
-            <ThemedView style={styles.infoCard}>
-              <ThemedText style={{ fontSize: 13, fontWeight: '700', marginBottom: Spacing.one, letterSpacing: 0.5 }}>PRÉVIA DO CÁLCULO</ThemedText>
+          {(() => {
+            const latestLote = lotes && lotes.length > 0 ? [...lotes].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0] : null;
+            const hasLoteData = Boolean(latestLote);
+            
+            const dispRendimento = hasLoteData 
+              ? `${formatQuantity(latestLote!.quantidadeInicial)} ${produto.unidade}`
+              : (recipe && recipe.rendimento !== undefined ? `${formatQuantity(recipe.rendimento)} ${recipe.unidadeRendimento}` : null);
               
-              {recipe && recipe.rendimento !== undefined && (
+            const pct = hasLoteData 
+              ? (latestLote!.custosAdicionaisSnapshot ?? 0)
+              : (produto.percentualCustosAdicionais ?? 0);
+              
+            const custoTotal = hasLoteData 
+              ? (latestLote!.custoUnitario * latestLote!.quantidadeInicial)
+              : (produto.custoTotal ?? produto.custo);
+              
+            const custoMateriais = hasLoteData 
+              ? (custoTotal / (1 + pct / 100))
+              : produto.custoMateriais;
+              
+            const custosAdicionais = hasLoteData 
+              ? (custoTotal - custoMateriais)
+              : produto.custosAdicionais;
+              
+            const custoPorUnidade = hasLoteData 
+              ? latestLote!.custoUnitario
+              : produto.custoPorUnidade;
+
+            return produto.precoSugerido !== undefined && (
+              <ThemedView style={styles.infoCard}>
+                <ThemedText style={{ fontSize: 13, fontWeight: '700', marginBottom: Spacing.one, letterSpacing: 0.5 }}>
+                  PRÉVIA DO CÁLCULO {hasLoteData ? '(ÚLTIMO LOTE)' : '(RECEITA PADRÃO)'}
+                </ThemedText>
+                
+                {dispRendimento && (
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <ThemedText style={{ fontSize: 13 }} themeColor="textSecondary">Rendimento</ThemedText>
+                    <ThemedText style={{ fontSize: 13, fontWeight: '600' }}>{dispRendimento}</ThemedText>
+                  </View>
+                )}
+                {custoMateriais !== undefined && custoMateriais > 0 && (
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <ThemedText style={{ fontSize: 13 }} themeColor="textSecondary">Custo dos materiais</ThemedText>
+                    <ThemedText style={{ fontSize: 13, fontWeight: '600' }}>{formatCurrency(custoMateriais)}</ThemedText>
+                  </View>
+                )}
+                {custosAdicionais !== undefined && custosAdicionais > 0 && (
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <ThemedText style={{ fontSize: 13 }} themeColor="textSecondary">
+                      Custos adicionais {pct > 0 ? `(${pct.toFixed(1).replace(/\.0$/, '')}%)` : ''}
+                    </ThemedText>
+                    <ThemedText style={{ fontSize: 13, fontWeight: '600' }}>{formatCurrency(custosAdicionais)}</ThemedText>
+                  </View>
+                )}
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <ThemedText style={{ fontSize: 13 }} themeColor="textSecondary">Rendimento da receita</ThemedText>
-                  <ThemedText style={{ fontSize: 13, fontWeight: '600' }}>{formatQuantity(recipe.rendimento)} {recipe.unidadeRendimento}</ThemedText>
+                  <ThemedText style={{ fontSize: 13 }} themeColor="textSecondary">Custo total</ThemedText>
+                  <ThemedText style={{ fontSize: 13, fontWeight: '600' }}>{formatCurrency(custoTotal)}</ThemedText>
                 </View>
-              )}
-              {produto.custoMateriais !== undefined && produto.custoMateriais > 0 && (
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <ThemedText style={{ fontSize: 13 }} themeColor="textSecondary">Custo dos materiais</ThemedText>
-                  <ThemedText style={{ fontSize: 13, fontWeight: '600' }}>{formatCurrency(produto.custoMateriais)}</ThemedText>
-                </View>
-              )}
-              {produto.custosAdicionais !== undefined && produto.custosAdicionais > 0 && (
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <ThemedText style={{ fontSize: 13 }} themeColor="textSecondary">
-                    Custos adicionais {produto.percentualCustosAdicionais !== undefined && produto.percentualCustosAdicionais > 0 ? `(${produto.percentualCustosAdicionais.toFixed(1).replace(/\.0$/, '')}%)` : ''}
-                  </ThemedText>
-                  <ThemedText style={{ fontSize: 13, fontWeight: '600' }}>{formatCurrency(produto.custosAdicionais)}</ThemedText>
-                </View>
-              )}
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                <ThemedText style={{ fontSize: 13 }} themeColor="textSecondary">Custo total</ThemedText>
-                <ThemedText style={{ fontSize: 13, fontWeight: '600' }}>{formatCurrency(produto.custoTotal ?? produto.custo)}</ThemedText>
-              </View>
-              {produto.custoPorUnidade !== undefined && (
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <ThemedText style={{ fontSize: 13 }} themeColor="textSecondary">Custo por unidade</ThemedText>
-                  <ThemedText style={{ fontSize: 13, fontWeight: '600' }}>{formatCurrency(produto.custoPorUnidade)}</ThemedText>
-                </View>
-              )}
-              {produto.percentualLucro !== undefined && produto.percentualLucro > 0 && (
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <ThemedText style={{ fontSize: 13 }} themeColor="textSecondary">
+                {custoPorUnidade !== undefined && (
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <ThemedText style={{ fontSize: 13 }} themeColor="textSecondary">Custo por unidade</ThemedText>
+                    <ThemedText style={{ fontSize: 13, fontWeight: '600' }}>{formatCurrency(custoPorUnidade)}</ThemedText>
+                  </View>
+                )}
+                {produto.percentualLucro !== undefined && produto.percentualLucro > 0 && (
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <ThemedText style={{ fontSize: 13 }} themeColor="textSecondary">
                     Lucro esperado ({produto.percentualLucro.toFixed(1).replace(/\.0$/, '')}%)
                   </ThemedText>
                   <ThemedText style={{ fontSize: 13, fontWeight: '600' }}>
@@ -223,11 +365,15 @@ export default function ProdutoDetalheScreen() {
                 <ThemedText style={{ fontSize: 14, fontWeight: '700', color: '#22c55e' }}>{formatCurrency(produto.precoSugerido)}</ThemedText>
               </View>
             </ThemedView>
-          )}
+          );
+        })()}
 
           <View style={styles.actionRow}>
             <Pressable
-              onPress={() => router.push('/receita-form?id=' + produto.id as any)}
+              onPress={() => {
+                setEditProdName(produto.nome);
+                setEditProdVisible(true);
+              }}
               style={({ pressed }) => [styles.editButton, pressed && { opacity: 0.7 }]}
             >
               <Ionicons name="create-outline" size={16} color={theme.text} />
@@ -245,9 +391,159 @@ export default function ProdutoDetalheScreen() {
               </ThemedText>
             </Pressable>
           </View>
+
+          {/* ── Histórico de Lotes ── */}
+          <View style={{ marginTop: Spacing.six }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.three }}>
+              <ThemedText type="defaultSemiBold">Lotes em Estoque</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">{lotes.length} total</ThemedText>
+            </View>
+
+            {lotes.length === 0 ? (
+              <ThemedView style={[styles.infoCard, { alignItems: 'center', paddingVertical: Spacing.six }]}>
+                <Ionicons name="cube-outline" size={32} color={theme.textSecondary} />
+                <ThemedText type="small" themeColor="textSecondary" style={{ marginTop: Spacing.two, textAlign: 'center' }}>
+                  Nenhum lote registrado.
+                </ThemedText>
+              </ThemedView>
+            ) : (
+              lotes.map((lote) => (
+                <ThemedView
+                  key={lote.id}
+                  style={[
+                    styles.infoCard,
+                    { borderLeftWidth: 4, borderLeftColor: lote.ativo && lote.quantidadeAtual > 0 ? '#22c55e' : '#94a3b8' },
+                  ]}
+                >
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <View style={{ flex: 1 }}>
+                      {/* Código e badge de status */}
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.two, marginBottom: 4 }}>
+                        <ThemedText style={{ fontWeight: '700', fontSize: 15 }}>{lote.codigo}</ThemedText>
+                        <View style={{
+                          paddingHorizontal: 8,
+                          paddingVertical: 2,
+                          borderRadius: 99,
+                          backgroundColor: lote.ativo && lote.quantidadeAtual > 0 ? '#22c55e22' : '#ef444422',
+                        }}>
+                          <ThemedText style={{
+                            fontSize: 10,
+                            fontWeight: '700',
+                            color: lote.ativo && lote.quantidadeAtual > 0 ? '#22c55e' : '#ef4444',
+                          }}>
+                            {lote.ativo && lote.quantidadeAtual > 0 ? 'ATIVO' : 'ESGOTADO'}
+                          </ThemedText>
+                        </View>
+                      </View>
+
+                      {/* Quantidade */}
+                      <ThemedText type="small" themeColor="textSecondary">
+                        Qtd: <ThemedText style={{ fontWeight: '600', color: theme.text }}>{formatQuantity(lote.quantidadeAtual)}</ThemedText>{' '}
+                        / inicial: {formatQuantity(lote.quantidadeInicial)} {produto.unidade}
+                      </ThemedText>
+
+                      {/* Data de entrada */}
+                      <ThemedText type="small" themeColor="textSecondary" style={{ marginTop: 2 }}>
+                        Adicionado em: {lote.dataEntrada}
+                      </ThemedText>
+                    </View>
+
+                    {/* Ações */}
+                    <View style={{ alignItems: 'flex-end', gap: Spacing.two }}>
+                      <View style={{ flexDirection: 'row', gap: Spacing.two }}>
+                        <Pressable onPress={() => router.push(`/receita-form?id=${produto.id}&loteId=${lote.id}` as any)} style={{ padding: Spacing.two, backgroundColor: theme.primary + '15', borderRadius: Spacing.half }}>
+                          <Ionicons name="pencil" size={16} color={theme.primary} />
+                        </Pressable>
+                        <Pressable onPress={() => handleExcluirLote(lote)} style={{ padding: Spacing.two, backgroundColor: '#ef444415', borderRadius: Spacing.half }}>
+                          <Ionicons name="trash-outline" size={16} color="#DC2626" />
+                        </Pressable>
+                      </View>
+                    </View>
+                  </View>
+                </ThemedView>
+              ))
+            )}
+          </View>
         </ScrollView>
       </SafeAreaView>
 
+      {/* Modal Editar Lote */}
+      <Modal visible={editLoteVisible} animationType="fade" transparent onRequestClose={() => setEditLoteVisible(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: Spacing.four }}>
+          <ThemedView style={{ backgroundColor: theme.background, borderRadius: Spacing.three, padding: Spacing.four, gap: Spacing.three }}>
+            <ThemedText style={{ fontSize: 20, fontWeight: '700' }}>Editar Lote {editingLote?.codigo}</ThemedText>
+
+            <View style={{ gap: Spacing.one }}>
+              <ThemedText type="smallBold">Quantidade atual ({produto.unidade})</ThemedText>
+              <TextInput
+                style={[{ padding: Spacing.three, borderRadius: Spacing.two, borderWidth: 1, borderColor: 'rgba(128,128,128,0.2)', color: theme.text, backgroundColor: theme.backgroundElement, fontSize: 16 }]}
+                keyboardType="decimal-pad"
+                value={editLoteQty}
+                onChangeText={setEditLoteQty}
+              />
+            </View>
+
+            <View style={{ gap: Spacing.one }}>
+              <ThemedText type="smallBold">Custo Unitário</ThemedText>
+              <TextInput
+                style={[{ padding: Spacing.three, borderRadius: Spacing.two, borderWidth: 1, borderColor: 'rgba(128,128,128,0.2)', color: theme.text, backgroundColor: theme.backgroundElement, fontSize: 16 }]}
+                keyboardType="decimal-pad"
+                value={editLoteCusto ? `R$ ${editLoteCusto}` : ''}
+                onChangeText={(t) => setEditLoteCusto(formatBRL(t))}
+              />
+            </View>
+
+            <View style={{ gap: Spacing.one }}>
+              <ThemedText type="smallBold">Observação (opcional)</ThemedText>
+              <TextInput
+                style={[{ padding: Spacing.three, borderRadius: Spacing.two, borderWidth: 1, borderColor: 'rgba(128,128,128,0.2)', color: theme.text, backgroundColor: theme.backgroundElement, fontSize: 16 }]}
+                value={editLoteObs}
+                onChangeText={setEditLoteObs}
+                placeholder="Ex: Ajuste de quebra"
+                placeholderTextColor={theme.textSecondary}
+              />
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.two }}>
+              <Pressable onPress={() => setEditLoteVisible(false)} style={{ flex: 1, padding: Spacing.three, alignItems: 'center', borderRadius: Spacing.two, backgroundColor: theme.backgroundElement }}>
+                <ThemedText style={{ fontWeight: '600' }}>Cancelar</ThemedText>
+              </Pressable>
+              <Pressable onPress={handleSaveEditLote} style={{ flex: 1, padding: Spacing.three, alignItems: 'center', borderRadius: Spacing.two, backgroundColor: theme.primary }}>
+                <ThemedText style={{ fontWeight: '600', color: '#fff' }}>Salvar</ThemedText>
+              </Pressable>
+            </View>
+          </ThemedView>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Modal Editar Produto */}
+      <Modal visible={editProdVisible} animationType="fade" transparent onRequestClose={() => setEditProdVisible(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: Spacing.four }}>
+          <ThemedView style={{ backgroundColor: theme.background, borderRadius: Spacing.three, padding: Spacing.four, gap: Spacing.three }}>
+            <ThemedText style={{ fontSize: 20, fontWeight: '700' }}>Editar Produto</ThemedText>
+
+            <View style={{ gap: Spacing.one }}>
+              <ThemedText type="smallBold">Nome do produto</ThemedText>
+              <TextInput
+                style={[{ padding: Spacing.three, borderRadius: Spacing.two, borderWidth: 1, borderColor: 'rgba(128,128,128,0.2)', color: theme.text, backgroundColor: theme.backgroundElement, fontSize: 16 }]}
+                value={editProdName}
+                onChangeText={setEditProdName}
+                placeholder="Ex: Coca-Cola 2L"
+                placeholderTextColor={theme.textSecondary}
+              />
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.two }}>
+              <Pressable onPress={() => setEditProdVisible(false)} style={{ flex: 1, padding: Spacing.three, alignItems: 'center', borderRadius: Spacing.two, backgroundColor: theme.backgroundElement }}>
+                <ThemedText style={{ fontWeight: '600' }}>Cancelar</ThemedText>
+              </Pressable>
+              <Pressable onPress={handleSaveEditProd} style={{ flex: 1, padding: Spacing.three, alignItems: 'center', borderRadius: Spacing.two, backgroundColor: theme.primary }}>
+                <ThemedText style={{ fontWeight: '600', color: '#fff' }}>Salvar</ThemedText>
+              </Pressable>
+            </View>
+          </ThemedView>
+        </KeyboardAvoidingView>
+      </Modal>
 
     </ThemedView>
   )
