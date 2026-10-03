@@ -38,7 +38,7 @@ import {
 } from '@/services/lote-service';
 import type { Lote } from '@/types/schema';
 import { formatCurrency, formatQuantity } from '@/utils/format';
-import { UNITS, getUnit, convertUnits } from '@/utils/units';
+import { UNITS, getUnit, convertUnits, getPriceUnit, calcTotalFromPrice, costToPriceUnit, costFromPriceUnit } from '@/utils/units';
 
 function formatBRL(value: string): string {
   const digits = value.replace(/\D/g, '');
@@ -168,7 +168,7 @@ export default function MaterialDetalheScreen() {
     try {
       // Converte a quantidade para a unidade de compra do material
       const qtyNaUnidadeCompra = convertUnits(qty, novoLoteUnit, material.unidadeCompra);
-      const totalGasto = precoUnit * qty;
+      const totalGasto = calcTotalFromPrice(precoUnit, qty, novoLoteUnit);
 
       // Código automático do lote
       const existingCodes = lotes.map(l => l.codigo);
@@ -228,7 +228,7 @@ export default function MaterialDetalheScreen() {
   function handleOpenEditLote(lote: Lote) {
     setEditingLote(lote);
     setEditLoteQty(String(lote.quantidadeAtual).replace('.', ','));
-    setEditLotePrecoUnit(formatBRL(String(Math.round(lote.custoUnitario * 100))));
+    setEditLotePrecoUnit(formatBRL(String(Math.round(costToPriceUnit(lote.custoUnitario, material?.unidadeCompra ?? 'un') * 100))));
     setEditLoteObs(lote.observacao || '');
     setEditLoteVisible(true);
   }
@@ -236,7 +236,9 @@ export default function MaterialDetalheScreen() {
   async function handleSaveEditLote() {
     if (!editingLote || !material) return;
     const qty = parseFloat(editLoteQty.replace(',', '.'));
-    const precoUnit = editLotePrecoUnit ? parseFloat(editLotePrecoUnit.replace(/\D/g, '')) / 100 : editingLote.custoUnitario;
+    const precoUnit = editLotePrecoUnit
+      ? costFromPriceUnit(parseFloat(editLotePrecoUnit.replace(/\D/g, '')) / 100, material.unidadeCompra)
+      : editingLote.custoUnitario;
 
     if (isNaN(qty) || qty < 0) {
       Alert.alert('Erro', 'Informe uma quantidade válida.');
@@ -311,9 +313,7 @@ export default function MaterialDetalheScreen() {
     );
   }
 
-  const unidadeLabel = material.unidadeCompra === 'g' || material.unidadeCompra === 'ml'
-    ? `${material.unidadeCompra === 'g' ? 'Kg' : 'Litro'}`
-    : material.unidadeCompra;
+  const unidadeLabel = getPriceUnit(material.unidadeCompra);
 
   return (
     <ThemedView style={styles.container}>
@@ -345,7 +345,7 @@ export default function MaterialDetalheScreen() {
             <ThemedView style={[styles.resumoCard, { borderColor: theme.primary + '40' }]}>
               <ThemedText type="small" themeColor="textSecondary">Custo Médio / {unidadeLabel}</ThemedText>
               <ThemedText style={[styles.resumoValue, { color: theme.primary }]}>
-                {formatCurrency(custoMedio * (material.unidadeCompra === 'g' || material.unidadeCompra === 'ml' ? 1000 : 1))}
+                {formatCurrency(costToPriceUnit(custoMedio, material.unidadeCompra))}
               </ThemedText>
             </ThemedView>
           </ThemedView>
@@ -451,7 +451,7 @@ export default function MaterialDetalheScreen() {
 
                       {/* Custo */}
                       <ThemedText type="small" themeColor="textSecondary" style={{ marginTop: 2 }}>
-                        Custo: <ThemedText style={{ fontWeight: '600', color: theme.primary }}>{formatCurrency(lote.custoUnitario)}</ThemedText>/{material.unidadeCompra}
+                        Custo: <ThemedText style={{ fontWeight: '600', color: theme.primary }}>{formatCurrency(costToPriceUnit(lote.custoUnitario, material.unidadeCompra))}</ThemedText>/{unidadeLabel}
                       </ThemedText>
 
                       {/* Observação / Fornecedor */}
@@ -575,7 +575,7 @@ export default function MaterialDetalheScreen() {
 
                   {/* Preço unitário */}
                   <View style={styles.fieldGroup}>
-                    <ThemedText type="smallBold" style={styles.fieldLabel}>Custo por {novoLoteUnit} *</ThemedText>
+                    <ThemedText type="smallBold" style={styles.fieldLabel}>Custo por {getPriceUnit(novoLoteUnit)} *</ThemedText>
                     <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.backgroundElement, borderRadius: Spacing.two, overflow: 'hidden' }}>
                       <View style={{ paddingHorizontal: Spacing.three }}>
                         <ThemedText themeColor="textSecondary">R$</ThemedText>
@@ -594,8 +594,11 @@ export default function MaterialDetalheScreen() {
                         <ThemedText type="small" themeColor="textSecondary">Total do lote</ThemedText>
                         <ThemedText style={{ fontSize: 22, fontWeight: '700', color: theme.primary, marginTop: 4 }}>
                           {formatCurrency(
-                            (parseFloat(novoLotePrecoUnit.replace(/\D/g, '')) / 100) *
-                            parseFloat(novoLoteQty.replace(',', '.') || '0')
+                            calcTotalFromPrice(
+                              parseFloat(novoLotePrecoUnit.replace(/\D/g, '')) / 100,
+                              parseFloat(novoLoteQty.replace(',', '.') || '0') || 0,
+                              novoLoteUnit,
+                            )
                           )}
                         </ThemedText>
                       </View>
@@ -677,7 +680,7 @@ export default function MaterialDetalheScreen() {
               </View>
 
               <View style={styles.fieldGroup}>
-                <ThemedText type="smallBold" style={styles.fieldLabel}>Custo por {material.unidadeCompra}</ThemedText>
+                <ThemedText type="smallBold" style={styles.fieldLabel}>Custo por {unidadeLabel}</ThemedText>
                 <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.backgroundElement, borderRadius: Spacing.two, overflow: 'hidden' }}>
                   <View style={{ paddingHorizontal: Spacing.three }}>
                     <ThemedText themeColor="textSecondary">R$</ThemedText>

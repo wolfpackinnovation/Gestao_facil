@@ -43,6 +43,29 @@ export function convertUnits(quantity: number, fromCode: string, toCode: string)
   return base / target.toBase;
 }
 
+/** Unidade em que o preço é informado: mg/g → kg, ml → litro; demais, a própria unidade. */
+export function getPriceUnit(code: string): string {
+  if (code === 'mg' || code === 'g') return 'kg';
+  if (code === 'ml') return 'litro';
+  return code;
+}
+
+/** Valor total = preço (por unidade de preço) × quantidade convertida para a unidade de preço. */
+export function calcTotalFromPrice(price: number, quantity: number, unitCode: string): number {
+  return price * convertUnits(quantity, unitCode, getPriceUnit(unitCode));
+}
+
+/** Converte custo armazenado (por unidade de compra) para custo por unidade de preço. */
+export function costToPriceUnit(costPerUnit: number, unitCode: string): number {
+  return costPerUnit * convertUnits(1, getPriceUnit(unitCode), unitCode);
+}
+
+/** Converte custo por unidade de preço para custo por unidade de compra. */
+export function costFromPriceUnit(costPerPriceUnit: number, unitCode: string): number {
+  const f = convertUnits(1, getPriceUnit(unitCode), unitCode);
+  return f > 0 ? costPerPriceUnit / f : 0;
+}
+
 export function sameType(unitA: string, unitB: string): boolean {
   const a = getUnit(unitA);
   const b = getUnit(unitB);

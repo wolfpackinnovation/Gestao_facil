@@ -5,6 +5,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/contexts/auth';
+import { migrarItensSemLote } from '@/services/lote-migration';
 
 function HomeTabIcon({ color, size, focused }: { color: ColorValue; size: number; focused?: boolean }) {
   const theme = useTheme();
@@ -36,6 +37,12 @@ export default function TabLayout() {
       router.replace('/(auth)/login');
     }
   }, [user, loading, router]);
+
+  useEffect(() => {
+    if (user?.uid) {
+      migrarItensSemLote(user.uid).catch(() => {});
+    }
+  }, [user?.uid]);
 
   if (loading) {
     return (
