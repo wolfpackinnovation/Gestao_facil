@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { DateNavigator } from '@/components/date-navigator';
@@ -18,6 +18,7 @@ import { getDespesas } from '@/services/despesa-service';
 import { listClients } from '@/services/client-service';
 import { getProdutos } from '@/services/estoque-storage';
 import { getMaterials } from '@/services/material-service';
+import { listAllLoteMovimentos } from '@/services/lote-service';
 import { formatCurrency } from '@/utils/format';
 import { convertToBase } from '@/utils/units';
 
@@ -47,6 +48,7 @@ function getMonthRange(ref: Date): { start: Date; end: Date } {
 
 export default function RelatoriosScreen() {
   const colors = useTheme();
+  const router = useRouter();
   const { user } = useAuth();
   const companyId = user?.uid ?? '';
 
@@ -58,6 +60,7 @@ export default function RelatoriosScreen() {
   const [clients, setClients] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [materials, setMaterials] = useState<any[]>([]);
+  const [movimentos, setMovimentos] = useState<any[]>([]);
   const [topProducts, setTopProducts] = useState<any[]>([]);
   const [topProductsRevenue, setTopProductsRevenue] = useState<any[]>([]);
   const [totalFiados, setTotalFiados] = useState<number>(0);
@@ -65,12 +68,13 @@ export default function RelatoriosScreen() {
   const loadData = useCallback(async () => {
     if (!companyId) return;
     setLoading(true);
-    const [allSalesData, despesasData, clientsData, productsData, materialsData] = await Promise.all([
+    const [allSalesData, despesasData, clientsData, productsData, materialsData, movimentosData] = await Promise.all([
       getAllSales(companyId),
       getDespesas(companyId),
       listClients(companyId),
       getProdutos(companyId),
       getMaterials(companyId),
+      listAllLoteMovimentos(companyId).catch(() => []),
     ]);
 
     const { start, end } = getMonthRange(referenceDate);
@@ -129,6 +133,7 @@ export default function RelatoriosScreen() {
     setClients(clientsData);
     setProducts(productsData);
     setMaterials(materialsData);
+    setMovimentos(movimentosData);
     setTopProducts(topProd);
     setTopProductsRevenue(topProdRev);
     setTotalFiados(fiadosSum);
@@ -156,24 +161,46 @@ export default function RelatoriosScreen() {
   );
 
   const despesasPeriodo = useMemo(() => {
-    const { start, end } = getMonthRange(referenceDate);
-    const startStr = start.toISOString().slice(0, 10);
-    const endStr = end.toISOString().slice(0, 10);
+    const refMonth = referenceDate.getMonth();
+    const refYear = referenceDate.getFullYear();
+
     return despesas.filter((d: any) => {
-      const dStr = d.data.slice(0, 10);
-      return dStr >= startStr && dStr <= endStr;
+      if (d.vencimento) {
+        const parts = d.vencimento.split('/');
+        if (parts.length === 3) {
+          const [dd, mm, yyyy] = parts.map(Number);
+          return mm - 1 === refMonth && yyyy === refYear;
+        }
+      }
+      const dataParts = d.data?.slice(0, 10).split('-') || [];
+      if (dataParts.length === 3) {
+        const [yyyy, mm, dd] = dataParts.map(Number);
+        return mm - 1 === refMonth && yyyy === refYear;
+      }
+      return false;
     });
   }, [despesas, referenceDate]);
 
   const prevDespesasPeriodo = useMemo(() => {
     const prev = new Date(referenceDate);
     prev.setMonth(prev.getMonth() - 1);
-    const { start, end } = getMonthRange(prev);
-    const startStr = start.toISOString().slice(0, 10);
-    const endStr = end.toISOString().slice(0, 10);
+    const refMonth = prev.getMonth();
+    const refYear = prev.getFullYear();
+
     return despesas.filter((d: any) => {
-      const dStr = d.data.slice(0, 10);
-      return dStr >= startStr && dStr <= endStr;
+      if (d.vencimento) {
+        const parts = d.vencimento.split('/');
+        if (parts.length === 3) {
+          const [dd, mm, yyyy] = parts.map(Number);
+          return mm - 1 === refMonth && yyyy === refYear;
+        }
+      }
+      const dataParts = d.data?.slice(0, 10).split('-') || [];
+      if (dataParts.length === 3) {
+        const [yyyy, mm, dd] = dataParts.map(Number);
+        return mm - 1 === refMonth && yyyy === refYear;
+      }
+      return false;
     });
   }, [despesas, referenceDate]);
 
@@ -198,6 +225,20 @@ export default function RelatoriosScreen() {
       return sum + (qty * (p.precoVenda || 0));
     }, 0);
   }, [products]);
+
+  const totalPerdas = useMemo(() => {
+    return movimentos.reduce((sum, mov) => {
+      const d = mov.createdAt?.toDate ? mov.createdAt.toDate() : new Date(mov.createdAt);
+      if (d.getMonth() === referenceDate.getMonth() && d.getFullYear() === referenceDate.getFullYear()) {
+        if (mov.quantidade < 0 && (mov.tipo === 'perda' || mov.tipo === 'ajuste')) {
+          const prod = products.find(p => p.id === mov.productId);
+          const cost = mov.custoUnitario || prod?.custoPorUnidade || prod?.custo || 0;
+          return sum + (Math.abs(mov.quantidade) * cost);
+        }
+      }
+      return sum;
+    }, 0);
+  }, [movimentos, referenceDate, products]);
 
   const profit = totalRevenue - totalExpenses;
   const prevProfit = prevTotalRevenue - prevTotalExpenses;
@@ -304,7 +345,7 @@ export default function RelatoriosScreen() {
 
           {/* Summary Cards */}
           <View style={styles.summaryGrid}>
-            <ThemedView style={styles.summaryCard}>
+            <Pressable onPress={() => router.push('/financeiro-detalhe?type=recebidas')} style={styles.summaryCard}>
               <ThemedText type="small" themeColor="textSecondary">Receitas</ThemedText>
               <ThemedText style={[styles.summaryValue, { color: '#C4956A' }]}>
                 {formatCurrency(totalRevenue)}
@@ -315,14 +356,14 @@ export default function RelatoriosScreen() {
                   {Math.abs(revenueGrowth).toFixed(1)}% vs. mês ant.
                 </ThemedText>
               </View>
-            </ThemedView>
-            <ThemedView style={styles.summaryCard}>
+            </Pressable>
+            <Pressable onPress={() => router.push('/financeiro-detalhe?type=despesas')} style={styles.summaryCard}>
               <ThemedText type="small" themeColor="textSecondary">Despesas</ThemedText>
               <ThemedText style={[styles.summaryValue, { color: '#DC2626' }]}>
                 {formatCurrency(totalExpenses)}
               </ThemedText>
               <ThemedText type="small" themeColor="textSecondary">{despesasPeriodo.length} despesas</ThemedText>
-            </ThemedView>
+            </Pressable>
             <ThemedView style={styles.summaryCard}>
               <ThemedText type="small" themeColor="textSecondary">Lucro</ThemedText>
               <ThemedText style={[styles.summaryValue, { color: profit >= 0 ? '#C4956A' : '#DC2626' }]}>
@@ -342,67 +383,76 @@ export default function RelatoriosScreen() {
               </ThemedText>
               <ThemedText type="small" themeColor="textSecondary">Lucro final no bolso</ThemedText>
             </ThemedView>
-            <ThemedView style={styles.summaryCard}>
+            <Pressable onPress={() => router.push('/financeiro-detalhe?type=areceber')} style={styles.summaryCard}>
               <ThemedText type="small" themeColor="textSecondary">Fiados Pendentes</ThemedText>
               <ThemedText style={[styles.summaryValue, { color: '#F59E0B' }]}>
                 {formatCurrency(totalFiados)}
               </ThemedText>
               <ThemedText type="small" themeColor="textSecondary">Total a receber</ThemedText>
-            </ThemedView>
+            </Pressable>
             <ThemedView style={styles.summaryCard}>
               <ThemedText type="small" themeColor="textSecondary">Ticket Médio</ThemedText>
               <ThemedText style={[styles.summaryValue, { color: '#3B82F6' }]}>
                 {sales.length > 0 ? formatCurrency(totalRevenue / sales.length) : 'R$ 0,00'}
               </ThemedText>
             </ThemedView>
-            <ThemedView style={styles.summaryCard}>
+            <Pressable onPress={() => router.push('/financeiro-detalhe?type=materiais')} style={styles.summaryCard}>
               <ThemedText type="small" themeColor="textSecondary">Valor em Estoque</ThemedText>
               <ThemedText style={[styles.summaryValue, { color: '#10B981' }]}>
                 {formatCurrency(totalMaterialValue)}
               </ThemedText>
               <ThemedText type="small" themeColor="textSecondary">Dinheiro investido</ThemedText>
-            </ThemedView>
-            <ThemedView style={styles.summaryCard}>
+            </Pressable>
+            <Pressable onPress={() => router.push('/financeiro-detalhe?type=produtos')} style={styles.summaryCard}>
               <ThemedText type="small" themeColor="textSecondary">Valor em Produtos</ThemedText>
               <ThemedText style={[styles.summaryValue, { color: '#8B5CF6' }]}>
                 {formatCurrency(totalProductValue)}
               </ThemedText>
               <ThemedText type="small" themeColor="textSecondary">Lucro potencial bruto</ThemedText>
-            </ThemedView>
+            </Pressable>
+            <Pressable onPress={() => router.push('/financeiro-detalhe?type=perdas')} style={styles.summaryCard}>
+              <ThemedText type="small" themeColor="textSecondary">Perdas</ThemedText>
+              <ThemedText style={[styles.summaryValue, { color: '#DC2626' }]}>
+                {formatCurrency(totalPerdas)}
+              </ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">Prejuízo com desperdício</ThemedText>
+            </Pressable>
           </View>
 
           {/* Payment Methods */}
-          <ThemedView style={styles.sectionGroup}>
-            <ThemedText style={styles.sectionTitle}>Formas de Pagamento</ThemedText>
-            <ThemedView style={styles.card}>
-              <PieChart
-                data={[
-                  { label: 'Dinheiro', value: totalsByMethod.dinheiro ?? 0, color: '#22C55E' },
-                  { label: 'Cartão', value: totalsByMethod['cartão'] ?? 0, color: '#3B82F6' },
-                  { label: 'Pix', value: totalsByMethod.pix ?? 0, color: '#C4956A' },
-                  { label: 'Fiado', value: totalsByMethod.fiado ?? 0, color: '#F59E0B' },
-                ]}
-              />
-              {methodOrder.map((method) => {
-                const total = totalsByMethod[method] ?? 0;
-                if (total === 0 && totalsByMethod[method] === undefined) return null;
-                const totalAll = Object.values(totalsByMethod).reduce((a, b) => a + b, 0);
-                const pct = totalAll > 0 ? (total / totalAll) * 100 : 0;
-                return (
-                  <View key={method} style={styles.paymentRow}>
-                    <View style={styles.paymentLeft}>
-                      <Ionicons name={paymentIcons[method]} size={18} color={colors.text} />
-                      <ThemedText type="default">{paymentLabels[method]}</ThemedText>
+          {totalRevenue > 0 && (
+            <ThemedView style={styles.sectionGroup}>
+              <ThemedText style={styles.sectionTitle}>Formas de Pagamento</ThemedText>
+              <ThemedView style={styles.card}>
+                <PieChart
+                  data={[
+                    { label: 'Dinheiro', value: totalsByMethod.dinheiro ?? 0, color: '#22C55E' },
+                    { label: 'Cartão', value: totalsByMethod['cartão'] ?? 0, color: '#3B82F6' },
+                    { label: 'Pix', value: totalsByMethod.pix ?? 0, color: '#C4956A' },
+                    { label: 'Fiado', value: totalsByMethod.fiado ?? 0, color: '#F59E0B' },
+                  ]}
+                />
+                {methodOrder.map((method) => {
+                  const total = totalsByMethod[method] ?? 0;
+                  if (total === 0 && totalsByMethod[method] === undefined) return null;
+                  const totalAll = Object.values(totalsByMethod).reduce((a, b) => a + b, 0);
+                  const pct = totalAll > 0 ? (total / totalAll) * 100 : 0;
+                  return (
+                    <View key={method} style={styles.paymentRow}>
+                      <View style={styles.paymentLeft}>
+                        <Ionicons name={paymentIcons[method]} size={18} color={colors.text} />
+                        <ThemedText type="default">{paymentLabels[method]}</ThemedText>
+                      </View>
+                      <ThemedView style={{ alignItems: 'flex-end' }}>
+                        <ThemedText style={{ fontWeight: '700' }}>{formatCurrency(total)}</ThemedText>
+                        <ThemedText type="small" themeColor="textSecondary">{pct.toFixed(1)}%</ThemedText>
+                      </ThemedView>
                     </View>
-                    <ThemedView style={{ alignItems: 'flex-end' }}>
-                      <ThemedText style={{ fontWeight: '700' }}>{formatCurrency(total)}</ThemedText>
-                      <ThemedText type="small" themeColor="textSecondary">{pct.toFixed(1)}%</ThemedText>
-                    </ThemedView>
-                  </View>
-                );
-              })}
+                  );
+                })}
+              </ThemedView>
             </ThemedView>
-          </ThemedView>
+          )}
 
           {/* Daily Revenue Chart */}
           {dailyRevenue.length > 0 && (

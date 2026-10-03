@@ -19,6 +19,7 @@ import { getSalesByDate, getAllSales } from '@/services/sale-service';
 import { getDespesas, type Despesa } from '@/services/despesa-service';
 import { getMaterials } from '@/services/material-service';
 import { getProdutos } from '@/services/estoque-storage';
+import { listAllLoteMovimentos } from '@/services/lote-service';
 import { formatCurrency } from '@/utils/format';
 import { convertToBase } from '@/utils/units';
 
@@ -45,12 +46,24 @@ async function getSalesInPeriod(companyId: string, ref: Date) {
 }
 
 function filterDespesasByPeriod(despesas: Despesa[], ref: Date): Despesa[] {
-  const { start, end } = getMonthRange(ref);
-  const startStr = start.toISOString().slice(0, 10);
-  const endStr = end.toISOString().slice(0, 10);
+  const refMonth = ref.getMonth();
+  const refYear = ref.getFullYear();
+
   return despesas.filter((d) => {
-    const dStr = d.data.slice(0, 10);
-    return dStr >= startStr && dStr <= endStr;
+    if (d.vencimento) {
+      const parts = d.vencimento.split('/');
+      if (parts.length === 3) {
+        const [dd, mm, yyyy] = parts.map(Number);
+        return mm - 1 === refMonth && yyyy === refYear;
+      }
+    }
+    // Caso não tenha vencimento ou o formato seja inválido, usa d.data (YYYY-MM-DD)
+    const dataParts = d.data.slice(0, 10).split('-');
+    if (dataParts.length === 3) {
+      const [yyyy, mm, dd] = dataParts.map(Number);
+      return mm - 1 === refMonth && yyyy === refYear;
+    }
+    return false;
   });
 }
 
@@ -71,22 +84,25 @@ export default function FinanceiroScreen() {
   const [despesas, setDespesas] = useState<Despesa[]>([]);
   const [materials, setMaterials] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
+  const [movimentos, setMovimentos] = useState<any[]>([]);
 
   const loadData = useCallback(async () => {
     if (!companyId) return;
     setLoading(true);
-    const [salesData, allSalesData, despesasData, materialsData, productsData] = await Promise.all([
+    const [salesData, allSalesData, despesasData, materialsData, productsData, movimentosData] = await Promise.all([
       getSalesInPeriod(companyId, referenceDate).catch(() => []),
       getAllSales(companyId).catch(() => []),
       getDespesas(companyId),
       getMaterials(companyId),
       getProdutos(companyId),
+      listAllLoteMovimentos(companyId).catch(() => []),
     ]);
     setMonthSales(salesData);
     setAllSales(allSalesData);
     setDespesas(despesasData);
     setMaterials(materialsData);
     setProducts(productsData);
+    setMovimentos(movimentosData);
     setLoading(false);
   }, [companyId, referenceDate]);
 
@@ -109,7 +125,11 @@ export default function FinanceiroScreen() {
   }, [products]);
 
   const receitasRecebidas = useMemo(() => {
-    return monthSales.filter(isPaid).reduce((sum, s) => sum + s.totalAmount, 0);
+    return monthSales.reduce((sum, s) => {
+      if (isPaid(s)) return sum + s.totalAmount;
+      if (s.paymentMethod === 'fiado' && (s.paidAmount ?? 0) > 0) return sum + s.paidAmount;
+      return sum;
+    }, 0);
   }, [monthSales]);
 
   const receitasAReceber = useMemo(() => {
@@ -120,10 +140,10 @@ export default function FinanceiroScreen() {
 
   const despesasPeriodo = useMemo(() => filterDespesasByPeriod(despesas, referenceDate), [despesas, referenceDate]);
   const despesasPagas = useMemo(() =>
-    despesasPeriodo.filter((d) => !d.vencimento).reduce((s, d) => s + d.valor, 0),
+    despesasPeriodo.filter((d) => !d.vencimento || d.pago).reduce((s, d) => s + d.valor, 0),
   [despesasPeriodo]);
   const despesasAPagar = useMemo(() =>
-    despesasPeriodo.filter((d) => d.vencimento).reduce((s, d) => s + d.valor, 0),
+    despesasPeriodo.filter((d) => d.vencimento && !d.pago).reduce((s, d) => s + d.valor, 0),
   [despesasPeriodo]);
 
   const dailyRevenue = useMemo(() => {
@@ -153,12 +173,26 @@ export default function FinanceiroScreen() {
     [monthSales],
   );
 
+  const totalPerdas = useMemo(() => {
+    return movimentos.reduce((sum, mov) => {
+      const d = mov.createdAt?.toDate ? mov.createdAt.toDate() : new Date(mov.createdAt);
+      if (d.getMonth() === referenceDate.getMonth() && d.getFullYear() === referenceDate.getFullYear()) {
+        if (mov.quantidade < 0 && (mov.tipo === 'perda' || mov.tipo === 'ajuste')) {
+          const prod = products.find(p => p.id === mov.productId);
+          const cost = mov.custoUnitario || prod?.custoPorUnidade || prod?.custo || 0;
+          return sum + (Math.abs(mov.quantidade) * cost);
+        }
+      }
+      return sum;
+    }, 0);
+  }, [movimentos, referenceDate, products]);
+
   const lucroRealizado = receitasRecebidas - despesasPagas;
 
   const boletosPendentes = useMemo(() => {
     const now = new Date();
     return despesas
-      .filter((d) => d.vencimento)
+      .filter((d) => d.vencimento && !d.pago)
       .map((d) => {
         const [dd, mm, yyyy] = d.vencimento!.split('/').map(Number);
         const vencDate = new Date(yyyy, mm - 1, dd);
@@ -179,8 +213,8 @@ export default function FinanceiroScreen() {
   const cards = [
     { key: 'recebidas', label: 'Receitas Recebidas', value: receitasRecebidas, color: '#C4956A' },
     { key: 'areceber', label: 'Receitas a Receber', value: receitasAReceber, color: '#F59E0B' },
-    { key: 'despesas', label: 'Despesas Pagas', value: despesasPagas, color: '#DC2626', route: '/pagamentos' },
-    { key: 'apagar', label: 'Despesas a Pagar', value: despesasAPagar, color: '#6B7280', route: '/pagamentos' },
+    { key: 'despesas', label: 'Despesas Pagas', value: despesasPagas, color: '#DC2626' },
+    { key: 'apagar', label: 'Despesas a Pagar', value: despesasAPagar, color: '#6B7280' },
     { key: 'materiais', label: 'Valor em Estoque', value: totalMaterialValue, color: '#10B981' },
     { key: 'produtos', label: 'Valor em Produtos', value: totalProductValue, color: '#8B5CF6' },
   ];
@@ -229,6 +263,20 @@ export default function FinanceiroScreen() {
                   -{formatCurrency(descontoTotal)}
                 </ThemedText>
               </ThemedView>
+            )}
+
+            {totalPerdas > 0 && (
+              <Pressable onPress={() => router.push('/perdas' as any)}>
+                <ThemedView style={[styles.card, { width: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: Spacing.two }]}>
+                  <ThemedView>
+                    <ThemedText style={[styles.cardLabel, { color: '#EF4444' }]}>Perdas e Desperdícios</ThemedText>
+                    <ThemedText type="small" themeColor="textSecondary">Custo total das perdas do período</ThemedText>
+                  </ThemedView>
+                  <ThemedText style={[styles.cardValue, { color: '#EF4444' }]}>
+                    -{formatCurrency(totalPerdas)}
+                  </ThemedText>
+                </ThemedView>
+              </Pressable>
             )}
 
             {/* Boletos Pendentes */}

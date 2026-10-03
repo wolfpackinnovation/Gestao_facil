@@ -17,6 +17,7 @@ const SIDEBAR_WIDTH = Dimensions.get('window').width * 0.75;
 const mainItems = [
   { icon: 'home', label: 'Início', route: '/' },
   { icon: 'cash', label: 'Pagamentos', route: '/pagamentos' },
+  { icon: 'warning-outline', label: 'Perdas', route: '/perdas' },
 ];
 
 const premiumItems = [

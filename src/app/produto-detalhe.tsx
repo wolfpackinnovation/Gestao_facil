@@ -21,7 +21,7 @@ import { formatQuantity } from '@/utils/format'
 import { getRecipe, type Recipe } from '@/services/recipe-service'
 import { getMaterials, updateMaterial, type Material } from '@/services/material-service'
 import { convertToBase } from '@/utils/units'
-import { listAllLotesByProduct, deleteLote, updateLote } from '@/services/lote-service'
+import { listAllLotesByProduct, deleteLote, updateLote, consumirEstoqueFEFO, createLoteMovimento } from '@/services/lote-service'
 import type { Lote } from '@/types/schema'
 
 function todayBR(): string {
@@ -52,6 +52,11 @@ export default function ProdutoDetalheScreen() {
   const [editProdVisible, setEditProdVisible] = useState(false);
   const [editProdName, setEditProdName] = useState('');
 
+  // Registrar Desperdício
+  const [desperdicioVisible, setDesperdicioVisible] = useState(false);
+  const [desperdicioQty, setDesperdicioQty] = useState('');
+  const [desperdicioMotivo, setDesperdicioMotivo] = useState('');
+
   const loadData = useCallback(async () => {
     if (!id) return
     setLoading(true)
@@ -65,7 +70,11 @@ export default function ProdutoDetalheScreen() {
         setMaterials(mats)
       }
       const allLotes = await listAllLotesByProduct(p.id).catch(() => [])
-      setLotes(allLotes.sort((a, b) => b.createdAt.localeCompare(a.createdAt)))
+      setLotes(allLotes.sort((a, b) => {
+        const d1 = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : new Date(a.createdAt as any).getTime();
+        const d2 = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : new Date(b.createdAt as any).getTime();
+        return d2 - d1;
+      }))
     }
     setLoading(false)
   }, [id])
@@ -138,6 +147,8 @@ export default function ProdutoDetalheScreen() {
       return;
     }
 
+    if (!editingLote?.id) return;
+
     try {
       await updateLote(editingLote.id, {
         quantidadeAtual: qty,
@@ -174,6 +185,7 @@ export default function ProdutoDetalheScreen() {
           text: 'Excluir',
           style: 'destructive',
           onPress: async () => {
+            if (!lote.id) return;
             try {
               await deleteLote(lote.id);
               const remaining = lotes.filter(l => l.id !== lote.id && l.ativo && l.quantidadeAtual > 0);
@@ -214,6 +226,53 @@ export default function ProdutoDetalheScreen() {
       await loadData();
     } catch (e) {
       Alert.alert('Erro', 'Não foi possível salvar o nome.');
+    }
+  }
+
+  async function handleRegistrarDesperdicio() {
+    if (!produto) return;
+    const qty = parseFloat(desperdicioQty.replace(',', '.'));
+    if (isNaN(qty) || qty <= 0) {
+      Alert.alert('Erro', 'Informe uma quantidade válida maior que zero.');
+      return;
+    }
+    
+    if ((produto.estoqueAtual ?? 0) < qty) {
+      Alert.alert('Erro', 'Quantidade excede o estoque atual.');
+      return;
+    }
+
+    try {
+      const res = await consumirEstoqueFEFO(produto.id, qty, {
+        tipo: 'perda',
+        motivo: desperdicioMotivo.trim() || 'Desperdício/Avaria',
+      });
+
+      // Atualiza o produto base para cobrir o que não tinha lote (legado)
+      const novaQuantidade = Math.max(0, (produto.quantidade ?? 0) - res.faltante);
+      await saveProduto({
+        ...produto,
+        quantidade: novaQuantidade,
+      });
+
+      if (res.faltante > 0) {
+        await createLoteMovimento({
+          companyId: produto.companyId,
+          productId: produto.id,
+          loteId: 'sem-lote',
+          tipo: 'perda',
+          quantidade: -res.faltante,
+          motivo: desperdicioMotivo.trim() || 'Desperdício/Avaria',
+        });
+      }
+
+      setDesperdicioVisible(false);
+      setDesperdicioQty('');
+      setDesperdicioMotivo('');
+      Alert.alert('Sucesso', 'Perda registrada com sucesso!');
+      await loadData();
+    } catch (e: any) {
+      Alert.alert('Erro', 'Ocorreu um erro ao registrar o desperdício.');
     }
   }
 
@@ -287,7 +346,11 @@ export default function ProdutoDetalheScreen() {
           </ThemedView>
 
           {(() => {
-            const latestLote = lotes && lotes.length > 0 ? [...lotes].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0] : null;
+            const latestLote = lotes && lotes.length > 0 ? [...lotes].sort((a, b) => {
+              const d1 = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : new Date(a.createdAt as any).getTime();
+              const d2 = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : new Date(b.createdAt as any).getTime();
+              return d2 - d1;
+            })[0] : null;
             const hasLoteData = Boolean(latestLote);
             
             const dispRendimento = hasLoteData 
@@ -307,7 +370,7 @@ export default function ProdutoDetalheScreen() {
               : produto.custoMateriais;
               
             const custosAdicionais = hasLoteData 
-              ? (custoTotal - custoMateriais)
+              ? (custoTotal - (custoMateriais || 0))
               : produto.custosAdicionais;
               
             const custoPorUnidade = hasLoteData 
@@ -370,6 +433,15 @@ export default function ProdutoDetalheScreen() {
 
           <View style={styles.actionRow}>
             <Pressable
+              onPress={() => setDesperdicioVisible(true)}
+              style={({ pressed }) => [styles.editButton, pressed && { opacity: 0.7 }]}
+            >
+              <Ionicons name="warning-outline" size={16} color="#f59e0b" />
+              <ThemedText type="default" style={{ color: '#f59e0b', fontWeight: '600' }}>
+                Perda
+              </ThemedText>
+            </Pressable>
+            <Pressable
               onPress={() => {
                 setEditProdName(produto.nome);
                 setEditProdVisible(true);
@@ -395,7 +467,7 @@ export default function ProdutoDetalheScreen() {
           {/* ── Histórico de Lotes ── */}
           <View style={{ marginTop: Spacing.six }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.three }}>
-              <ThemedText type="defaultSemiBold">Lotes em Estoque</ThemedText>
+              <ThemedText type="default" style={{ fontWeight: '600' }}>Lotes em Estoque</ThemedText>
               <ThemedText type="small" themeColor="textSecondary">{lotes.length} total</ThemedText>
             </View>
 
@@ -539,6 +611,47 @@ export default function ProdutoDetalheScreen() {
               </Pressable>
               <Pressable onPress={handleSaveEditProd} style={{ flex: 1, padding: Spacing.three, alignItems: 'center', borderRadius: Spacing.two, backgroundColor: theme.primary }}>
                 <ThemedText style={{ fontWeight: '600', color: '#fff' }}>Salvar</ThemedText>
+              </Pressable>
+            </View>
+          </ThemedView>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Modal Desperdício */}
+      <Modal visible={desperdicioVisible} animationType="fade" transparent onRequestClose={() => setDesperdicioVisible(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: Spacing.four }}>
+          <ThemedView style={{ backgroundColor: theme.background, borderRadius: Spacing.three, padding: Spacing.four, gap: Spacing.three }}>
+            <ThemedText style={{ fontSize: 20, fontWeight: '700', color: '#f59e0b' }}>Registrar Perda / Desperdício</ThemedText>
+
+            <View style={{ gap: Spacing.one }}>
+              <ThemedText type="smallBold">Quantidade a abater ({produto.unidade})</ThemedText>
+              <TextInput
+                style={[{ padding: Spacing.three, borderRadius: Spacing.two, borderWidth: 1, borderColor: 'rgba(128,128,128,0.2)', color: theme.text, backgroundColor: theme.backgroundElement, fontSize: 16 }]}
+                keyboardType="decimal-pad"
+                value={desperdicioQty}
+                onChangeText={setDesperdicioQty}
+                placeholder="1"
+                placeholderTextColor={theme.textSecondary}
+              />
+            </View>
+
+            <View style={{ gap: Spacing.one }}>
+              <ThemedText type="smallBold">Motivo (opcional)</ThemedText>
+              <TextInput
+                style={[{ padding: Spacing.three, borderRadius: Spacing.two, borderWidth: 1, borderColor: 'rgba(128,128,128,0.2)', color: theme.text, backgroundColor: theme.backgroundElement, fontSize: 16 }]}
+                value={desperdicioMotivo}
+                onChangeText={setDesperdicioMotivo}
+                placeholder="Ex: Produto estragou, validade, etc."
+                placeholderTextColor={theme.textSecondary}
+              />
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.two }}>
+              <Pressable onPress={() => setDesperdicioVisible(false)} style={{ flex: 1, padding: Spacing.three, alignItems: 'center', borderRadius: Spacing.two, backgroundColor: theme.backgroundElement }}>
+                <ThemedText style={{ fontWeight: '600' }}>Cancelar</ThemedText>
+              </Pressable>
+              <Pressable onPress={handleRegistrarDesperdicio} style={{ flex: 1, padding: Spacing.three, alignItems: 'center', borderRadius: Spacing.two, backgroundColor: '#f59e0b' }}>
+                <ThemedText style={{ fontWeight: '600', color: '#fff' }}>Registrar</ThemedText>
               </Pressable>
             </View>
           </ThemedView>

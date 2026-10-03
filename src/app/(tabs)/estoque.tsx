@@ -101,6 +101,8 @@ export default function EstoqueScreen() {
 
     if (stockFilter === 'normal') {
       list = list.filter(p => !isLowStock(p) && !isExpired(p) && (p.estoqueAtual ?? 0) > 0)
+    } else if (stockFilter === 'disponivel') {
+      list = list.filter(p => (p.estoqueAtual ?? 0) > 0)
     } else if (stockFilter === 'baixo') {
       list = list.filter(p => isLowStock(p))
     } else if (stockFilter === 'sem_estoque') {
@@ -212,12 +214,17 @@ export default function EstoqueScreen() {
     let lowCount = 0;
     let expiringCount = 0;
     let expiredCount = 0;
+    let availableCount = 0;
+    let unavailableCount = 0;
     for (const p of produtos) {
+      if ((p.estoqueAtual ?? 0) > 0) availableCount++;
+      else unavailableCount++;
+
       if (isLowStock(p)) lowCount++;
       if (isExpiringSoon(p)) expiringCount++;
       if (isExpired(p)) expiredCount++;
     }
-    return { totalCount: produtos.length, lowCount, expiringCount, expiredCount };
+    return { totalCount: produtos.length, lowCount, expiringCount, expiredCount, availableCount, unavailableCount };
   }, [produtos]);
 
   function getStatus(p: Produto): { label: string; color: string } {
@@ -283,10 +290,7 @@ export default function EstoqueScreen() {
   }
 
 
-  const summaryCards = [
-    { label: 'Produtos', value: String(summary.totalCount), color: theme.text, filterKey: 'todos' },
-    { label: 'Estoque baixo', value: String(summary.lowCount), color: '#eab308', filterKey: 'baixo' },
-  ];
+
 
   return (
     <ThemedView style={styles.container}>
@@ -355,28 +359,29 @@ export default function EstoqueScreen() {
                 </ThemedView>
 
                 <ThemedView style={styles.summaryRow}>
-                  {summaryCards.map((card) => (
-                    <Pressable
-                      key={card.label}
-                      onPress={() => {
-                        setStockFilter(card.filterKey);
-                        setActiveTab('estoque');
-                      }}
-                      style={[styles.summaryCard, stockFilter === card.filterKey && card.filterKey !== 'todos' && { borderLeftWidth: 3, borderLeftColor: card.color }]}
-                    >
-                      <ThemedText
-                        type="small"
-                        themeColor="textSecondary"
-                        style={styles.summaryLabel}
-                      >
-                        {card.label}
-                      </ThemedText>
-                      <ThemedText style={[styles.summaryValue, { color: card.color }]}>
-                        {card.value}
-                      </ThemedText>
-                    </Pressable>
-                  ))}
+                  <Pressable 
+                    onPress={() => {
+                      setStockFilter(stockFilter === 'disponivel' ? 'todos' : 'disponivel');
+                      setActiveTab('estoque');
+                    }}
+                    style={[styles.summaryCard, { backgroundColor: '#22c55e18', opacity: stockFilter === 'sem_estoque' ? 0.4 : 1, borderWidth: stockFilter === 'disponivel' ? 2 : 1, borderColor: stockFilter === 'disponivel' ? '#22c55e' : 'transparent' }]}
+                  >
+                    <ThemedText style={[styles.summaryLabel, { color: '#22c55e' }]}>DISPONÍVEIS</ThemedText>
+                    <ThemedText style={[styles.summaryValue, { color: '#22c55e' }]}>{summary.availableCount}</ThemedText>
+                  </Pressable>
+
+                  <Pressable 
+                    onPress={() => {
+                      setStockFilter(stockFilter === 'sem_estoque' ? 'todos' : 'sem_estoque');
+                      setActiveTab('estoque');
+                    }}
+                    style={[styles.summaryCard, { backgroundColor: '#ef444418', opacity: stockFilter === 'disponivel' ? 0.4 : 1, borderWidth: stockFilter === 'sem_estoque' ? 2 : 1, borderColor: stockFilter === 'sem_estoque' ? '#ef4444' : 'transparent' }]}
+                  >
+                    <ThemedText style={[styles.summaryLabel, { color: '#ef4444' }]}>INDISPONÍVEIS</ThemedText>
+                    <ThemedText style={[styles.summaryValue, { color: '#ef4444' }]}>{summary.unavailableCount}</ThemedText>
+                  </Pressable>
                 </ThemedView>
+
 
                 <ThemedView style={styles.searchRow}>
                   <Ionicons name="search" size={18} color={theme.textSecondary} />

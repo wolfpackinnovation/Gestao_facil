@@ -15,6 +15,7 @@ import { getDespesas, updateDespesa } from '@/services/despesa-service';
 import { listClients } from '@/services/client-service';
 import { getMaterials } from '@/services/material-service';
 import { getProdutos } from '@/services/estoque-storage';
+import { listAllLoteMovimentos } from '@/services/lote-service';
 import { formatCurrency, formatQuantity } from '@/utils/format';
 
 const MONTHS = [
@@ -40,6 +41,7 @@ export default function FinanceiroDetalheScreen() {
   const [clients, setClients] = useState<any[]>([]);
   const [materials, setMaterials] = useState<any[]>([]);
   const [produtosEstoque, setProdutosEstoque] = useState<any[]>([]);
+  const [movimentos, setMovimentos] = useState<any[]>([]);
 
   const currentMonth = referenceDate.getMonth();
   const currentYear = referenceDate.getFullYear();
@@ -47,13 +49,14 @@ export default function FinanceiroDetalheScreen() {
   const loadData = useCallback(async () => {
     if (!companyId) return;
     setLoading(true);
-    const [salesData, allSalesData, despesasData, clientsData, materialsData, produtosData] = await Promise.all([
+    const [salesData, allSalesData, despesasData, clientsData, materialsData, produtosData, movimentosData] = await Promise.all([
       getSalesInPeriod(companyId, referenceDate).catch(() => []),
       getAllSales(companyId).catch(() => []),
       getDespesas(companyId),
       listClients(companyId),
       getMaterials(companyId).catch(() => []),
       getProdutos(companyId).catch(() => []),
+      listAllLoteMovimentos(companyId).catch(() => []),
     ]);
     setMonthSales(salesData);
     setAllSales(allSalesData);
@@ -61,6 +64,7 @@ export default function FinanceiroDetalheScreen() {
     setClients(clientsData ?? []);
     setMaterials(materialsData);
     setProdutosEstoque(produtosData);
+    setMovimentos(movimentosData);
     setLoading(false);
   }, [companyId, referenceDate]);
 
@@ -84,18 +88,34 @@ export default function FinanceiroDetalheScreen() {
     apagar: 'Despesas a Pagar',
     materiais: 'Valor em Estoque',
     produtos: 'Valor em Produtos',
+    perdas: 'Perdas e Desperdícios',
   }[type] || 'Detalhes';
 
   const items = useMemo(() => {
     switch (type) {
-      case 'recebidas':
-        return monthSales.filter(isPaid).map((s) => ({
-          id: s.id,
-          desc: `Venda ${s.number}`,
-          sub: 'Pago',
-          amount: s.totalAmount,
-          color: '#C4956A',
-        }));
+      case 'recebidas': {
+        const result: any[] = [];
+        for (const s of monthSales) {
+          if (isPaid(s)) {
+            result.push({
+              id: s.id,
+              desc: `Venda ${s.number}`,
+              sub: 'Pago',
+              amount: s.totalAmount,
+              color: '#C4956A',
+            });
+          } else if (s.paymentMethod === 'fiado' && (s.paidAmount ?? 0) > 0) {
+            result.push({
+              id: s.id + '-partial',
+              desc: `Venda ${s.number}`,
+              sub: 'Pagamento Parcial',
+              amount: s.paidAmount,
+              color: '#C4956A',
+            });
+          }
+        }
+        return result;
+      }
       case 'areceber': {
         const grouped: Record<string, { id: string; desc: string; sub: string; amount: number; count: number; color: string }> = {};
         for (const s of allSales) {
@@ -112,7 +132,7 @@ export default function FinanceiroDetalheScreen() {
       }
       case 'despesas': {
         const despesasPeriodo = filterDespesasByPeriod(despesas, referenceDate);
-        return despesasPeriodo.filter((d) => !d.vencimento).sort((a, b) => b.valor - a.valor).map((d) => ({
+        return despesasPeriodo.filter((d) => !d.vencimento || d.pago).sort((a, b) => b.valor - a.valor).map((d) => ({
           id: d.id,
           desc: d.descricao,
           sub: d.categoria,
@@ -123,7 +143,7 @@ export default function FinanceiroDetalheScreen() {
       case 'apagar': {
         const despesasPeriodo = filterDespesasByPeriod(despesas, referenceDate);
         const now = new Date();
-        return despesasPeriodo.filter((d) => d.vencimento).sort((a, b) => {
+        return despesasPeriodo.filter((d) => d.vencimento && !d.pago).sort((a, b) => {
           const aVenc = a.vencimento.split('/').reverse().join('-');
           const bVenc = b.vencimento.split('/').reverse().join('-');
           return aVenc.localeCompare(bVenc);
@@ -162,16 +182,43 @@ export default function FinanceiroDetalheScreen() {
             amount: Math.max(0, p.estoqueAtual || 0) * (p.precoVenda || 0),
             color: '#8B5CF6',
           }));
+      case 'perdas': {
+        const result: any[] = [];
+        for (const mov of movimentos) {
+          const d = mov.createdAt?.toDate ? mov.createdAt.toDate() : new Date(mov.createdAt);
+          if (d.getMonth() === referenceDate.getMonth() && d.getFullYear() === referenceDate.getFullYear()) {
+            if (mov.quantidade < 0 && (mov.tipo === 'perda' || mov.tipo === 'ajuste')) {
+              const prod = produtosEstoque.find(p => p.id === mov.productId);
+              const cost = mov.custoUnitario || prod?.custoPorUnidade || prod?.custo || 0;
+              const dateStr = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}`;
+              result.push({
+                id: mov.id,
+                desc: prod?.nome || 'Produto desconhecido',
+                sub: `${dateStr} - ${Math.abs(mov.quantidade)} un ${mov.observacao ? `(${mov.observacao})` : ''}`,
+                amount: Math.abs(mov.quantidade) * cost,
+                color: '#DC2626',
+              });
+            }
+          }
+        }
+        return result;
+      }
       default:
         return [];
     }
-  }, [type, monthSales, allSales, despesas, referenceDate, materials, produtosEstoque]);
+  }, [type, monthSales, allSales, despesas, referenceDate, materials, produtosEstoque, movimentos]);
 
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <ThemedView style={styles.backRow}>
-            <Pressable onPress={() => router.navigate('/financeiro' as any)} style={styles.backButton}>
+            <Pressable onPress={() => {
+              if (router.canGoBack()) {
+                router.back();
+              } else {
+                router.navigate('/financeiro' as any);
+              }
+            }} style={styles.backButton}>
             <SymbolView
               tintColor={theme.text}
               name={{ ios: 'chevron.left', android: 'arrow_back', web: 'arrow_back' }}
@@ -210,6 +257,7 @@ export default function FinanceiroDetalheScreen() {
                     : type === 'apagar' ? 'Total a Pagar'
                     : type === 'materiais' ? 'Total em Estoque'
                     : type === 'produtos' ? 'Total em Produtos'
+                    : type === 'perdas' ? 'Total de Perdas'
                     : 'Total de Despesas'}
                 </ThemedText>
                 <ThemedText style={styles.totalValue}>
@@ -273,12 +321,23 @@ async function getSalesInPeriod(companyId: string, ref: Date) {
 }
 
 function filterDespesasByPeriod(despesas: any[], ref: Date): any[] {
-  const { start, end } = getMonthRange(ref);
-  const startStr = start.toISOString().slice(0, 10);
-  const endStr = end.toISOString().slice(0, 10);
+  const refMonth = ref.getMonth();
+  const refYear = ref.getFullYear();
+
   return despesas.filter((d) => {
-    const dStr = d.data.slice(0, 10);
-    return dStr >= startStr && dStr <= endStr;
+    if (d.vencimento) {
+      const parts = d.vencimento.split('/');
+      if (parts.length === 3) {
+        const [dd, mm, yyyy] = parts.map(Number);
+        return mm - 1 === refMonth && yyyy === refYear;
+      }
+    }
+    const dataParts = d.data?.slice(0, 10).split('-') || [];
+    if (dataParts.length === 3) {
+      const [yyyy, mm, dd] = dataParts.map(Number);
+      return mm - 1 === refMonth && yyyy === refYear;
+    }
+    return false;
   });
 }
 

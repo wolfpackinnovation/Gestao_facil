@@ -38,6 +38,7 @@ const routeTitles: Record<string, string> = {
   'nova-venda': 'Nova Venda',
   'mais': 'Mais',
   'explore': 'Explorar',
+  'perdas': 'Registro de Perdas',
 }
 
 function getRouteTitle(pathname: string): string {
