@@ -367,17 +367,15 @@ export default function ReceitaFormScreen() {
                 userId: companyId,
               });
 
-              if (res.sucesso) {
-                // Atualiza o documento principal do material para refletir o consumo
-                const lotesMat = await listAllLotesByProduct(material.id);
-                const ativos = lotesMat.filter(l => l.ativo && l.quantidadeAtual > 0);
-                const matQtd = ativos.reduce((sum, l) => sum + l.quantidadeAtual, 0);
-                const matPreco = ativos.reduce((sum, l) => sum + l.quantidadeAtual * l.custoUnitario, 0);
-                await updateMaterial(material.id, { 
-                  quantidadeCompra: matQtd,
-                  precoCompra: matPreco,
-                });
-              }
+              // Atualiza o documento principal do material para refletir o consumo (mesmo parcial)
+              const lotesMat = await listAllLotesByProduct(material.id);
+              const ativos = lotesMat.filter(l => l.ativo && l.quantidadeAtual > 0);
+              const matQtd = ativos.reduce((sum, l) => sum + l.quantidadeAtual, 0);
+              const matPreco = ativos.reduce((sum, l) => sum + l.quantidadeAtual * l.custoUnitario, 0);
+              await updateMaterial(material.id, { 
+                quantidadeCompra: matQtd,
+                precoCompra: matPreco,
+              });
             }
           }
         }
@@ -697,7 +695,15 @@ export default function ReceitaFormScreen() {
             {materials.length === 0 && (
               <ThemedText themeColor="textSecondary">Nenhum material cadastrado.</ThemedText>
             )}
-            {materials.map((m) => {
+            {[...materials]
+              .sort((a, b) => {
+                const aAvail = a.quantidadeCompra > 0;
+                const bAvail = b.quantidadeCompra > 0;
+                if (aAvail && !bAvail) return -1;
+                if (!aAvail && bAvail) return 1;
+                return a.nome.localeCompare(b.nome);
+              })
+              .map((m) => {
               const alreadyAdded = itens.some((i) => i.materialId === m.id);
               return (
                 <Pressable

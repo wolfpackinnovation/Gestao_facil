@@ -59,8 +59,8 @@ export default function MaterialFormScreen() {
       setNome(mat.nome);
       const qty = mat.quantidadeCompra || 1;
       const calcQty = (mat.unidadeCompra === 'g' || mat.unidadeCompra === 'ml') ? (qty / 1000) : qty;
-      const unitPrice = calcQty > 0 ? (mat.precoCompra / calcQty) : 0;
-      setPreco(String(Math.round(unitPrice * 100)));
+      const totalPaid = mat.precoCompra;
+      setPreco(String(Math.round(totalPaid * 100)));
       setQuantidade(String(qty));
       setUnidade(mat.unidadeCompra);
     }
@@ -125,7 +125,7 @@ export default function MaterialFormScreen() {
       return;
     }
 
-    const gastoTotal = parsedPreco * ((unidade === 'g' || unidade === 'ml') ? (parsedQtd / 1000) : parsedQtd);
+    const gastoTotal = parsedPreco;
 
     try {
       const payload = {
@@ -225,7 +225,7 @@ export default function MaterialFormScreen() {
             </ThemedView>
 
             <ThemedView style={styles.fieldGroup}>
-              <ThemedText type="smallBold" style={styles.fieldLabel}>Preço base (por Kg, Litro ou Unidade)</ThemedText>
+              <ThemedText type="smallBold" style={styles.fieldLabel}>Valor total pago</ThemedText>
               <View style={styles.priceWrapper}>
                 <TextInput
                   style={[styles.input, styles.priceInput, { color: theme.text, backgroundColor: theme.backgroundElement }]}
@@ -264,17 +264,6 @@ export default function MaterialFormScreen() {
                 </Pressable>
               </View>
 
-              {preco.trim() !== '' && Number(preco) > 0 && quantidade.trim() !== '' && Number(quantidade.replace(',', '.')) > 0 && (
-                <View style={{ marginTop: Spacing.two, padding: Spacing.three, backgroundColor: theme.backgroundElement, borderRadius: Spacing.two, alignItems: 'center' }}>
-                  <ThemedText type="smallBold" themeColor="textSecondary">Gasto total da compra</ThemedText>
-                  <ThemedText style={{ fontSize: 24, fontWeight: '700', color: theme.primary, marginTop: Spacing.one }}>
-                    {formatCurrency(
-                      (Number(preco) / 100) * 
-                      ((unidade === 'g' || unidade === 'ml') ? Number(quantidade.replace(',', '.')) / 1000 : Number(quantidade.replace(',', '.')))
-                    )}
-                  </ThemedText>
-                </View>
-              )}
             </ThemedView>
 
             <Pressable

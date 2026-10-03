@@ -73,6 +73,8 @@ export default function MaterialDetalheScreen() {
   const [editLoteVisible, setEditLoteVisible] = useState(false);
   const [editingLote, setEditingLote] = useState<Lote | null>(null);
   const [editLoteQty, setEditLoteQty] = useState('');
+  const [editLoteUnit, setEditLoteUnit] = useState('');
+  const [editUnitPickerVisible, setEditUnitPickerVisible] = useState(false);
   const [editLotePrecoUnit, setEditLotePrecoUnit] = useState('');
   const [editLoteObs, setEditLoteObs] = useState('');
 
@@ -88,7 +90,15 @@ export default function MaterialDetalheScreen() {
     if (mat) {
       setNovoLoteUnit(mat.unidadeCompra);
       const allLotes = await listAllLotesByProduct(mat.id);
-      setLotes(allLotes.sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0)));
+      setLotes(allLotes.sort((a, b) => {
+        const aAtivo = a.ativo && a.quantidadeAtual > 0;
+        const bAtivo = b.ativo && b.quantidadeAtual > 0;
+        if (aAtivo && !bAtivo) return -1;
+        if (!aAtivo && bAtivo) return 1;
+        const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : new Date(a.createdAt as any).getTime();
+        const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : new Date(b.createdAt as any).getTime();
+        return dateB - dateA;
+      }));
     }
     setLoading(false);
   }, [id]);
@@ -168,7 +178,7 @@ export default function MaterialDetalheScreen() {
     try {
       // Converte a quantidade para a unidade de compra do material
       const qtyNaUnidadeCompra = convertUnits(qty, novoLoteUnit, material.unidadeCompra);
-      const totalGasto = calcTotalFromPrice(precoUnit, qty, novoLoteUnit);
+      const totalGasto = precoUnit; // precoUnit is now total amount paid
 
       // Código automático do lote
       const existingCodes = lotes.map(l => l.codigo);
@@ -183,7 +193,7 @@ export default function MaterialDetalheScreen() {
         dataValidade: '',
         dataEntrada: new Date().toLocaleDateString('pt-BR'),
         fornecedor: novoLoteFornecedor.trim(),
-        observacao: novoLoteObs.trim() || `${qty} ${novoLoteUnit} — ${material.nome}`,
+        observacao: novoLoteObs.trim(),
         origem: 'reposicao',
       });
 
@@ -228,24 +238,30 @@ export default function MaterialDetalheScreen() {
   function handleOpenEditLote(lote: Lote) {
     setEditingLote(lote);
     setEditLoteQty(String(lote.quantidadeAtual).replace('.', ','));
-    setEditLotePrecoUnit(formatBRL(String(Math.round(costToPriceUnit(lote.custoUnitario, material?.unidadeCompra ?? 'un') * 100))));
+    setEditLoteUnit(material?.unidadeCompra ?? 'un');
+    const totalCurrentValue = lote.quantidadeAtual * lote.custoUnitario;
+    setEditLotePrecoUnit(formatBRL(String(Math.round(totalCurrentValue * 100))));
     setEditLoteObs(lote.observacao || '');
     setEditLoteVisible(true);
   }
 
   async function handleSaveEditLote() {
     if (!editingLote || !material) return;
-    const qty = parseFloat(editLoteQty.replace(',', '.'));
-    const precoUnit = editLotePrecoUnit
-      ? costFromPriceUnit(parseFloat(editLotePrecoUnit.replace(/\D/g, '')) / 100, material.unidadeCompra)
-      : editingLote.custoUnitario;
+    const qtyInput = parseFloat(editLoteQty.replace(',', '.'));
+    const precoInput = editLotePrecoUnit
+      ? parseFloat(editLotePrecoUnit.replace(/\D/g, '')) / 100
+      : 0;
 
-    if (isNaN(qty) || qty < 0) {
+    if (isNaN(qtyInput) || qtyInput < 0) {
       Alert.alert('Erro', 'Informe uma quantidade válida.');
       return;
     }
 
     try {
+      const qty = convertUnits(qtyInput, editLoteUnit, material.unidadeCompra);
+      const totalGasto = precoInput;
+      const precoUnit = qty > 0 ? totalGasto / qty : editingLote.custoUnitario;
+
       await updateLote(editingLote.id!, {
         quantidadeAtual: qty,
         custoUnitario: precoUnit,
@@ -445,8 +461,7 @@ export default function MaterialDetalheScreen() {
 
                       {/* Quantidade */}
                       <ThemedText type="small" themeColor="textSecondary">
-                        Qtd: <ThemedText style={{ fontWeight: '600', color: theme.text }}>{formatQuantity(lote.quantidadeAtual)}</ThemedText>{' '}
-                        / inicial: {formatQuantity(lote.quantidadeInicial)} {material.unidadeCompra}
+                        Qtd comprada: <ThemedText style={{ fontWeight: '600', color: theme.text }}>{formatQuantity(lote.quantidadeInicial)} {material.unidadeCompra}</ThemedText>
                       </ThemedText>
 
                       {/* Custo */}
@@ -455,7 +470,7 @@ export default function MaterialDetalheScreen() {
                       </ThemedText>
 
                       {/* Observação / Fornecedor */}
-                      {lote.observacao ? (
+                      {lote.observacao && !lote.observacao.includes(`— ${material.nome}`) ? (
                         <ThemedText type="small" themeColor="textSecondary" style={{ marginTop: 2 }}>
                           {lote.observacao}
                         </ThemedText>
@@ -475,7 +490,7 @@ export default function MaterialDetalheScreen() {
                     {/* Ações */}
                     <View style={{ alignItems: 'flex-end', gap: Spacing.two }}>
                       <ThemedText style={{ fontWeight: '700', color: theme.primary }}>
-                        {formatCurrency(lote.quantidadeAtual * lote.custoUnitario)}
+                        {formatCurrency(lote.quantidadeInicial * lote.custoUnitario)}
                       </ThemedText>
                       <View style={{ flexDirection: 'row', gap: Spacing.two }}>
                         <Pressable onPress={() => handleOpenEditLote(lote)} style={styles.iconBtn}>
@@ -575,7 +590,7 @@ export default function MaterialDetalheScreen() {
 
                   {/* Preço unitário */}
                   <View style={styles.fieldGroup}>
-                    <ThemedText type="smallBold" style={styles.fieldLabel}>Custo por {getPriceUnit(novoLoteUnit)} *</ThemedText>
+                    <ThemedText type="smallBold" style={styles.fieldLabel}>Valor total pago *</ThemedText>
                     <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.backgroundElement, borderRadius: Spacing.two, overflow: 'hidden' }}>
                       <View style={{ paddingHorizontal: Spacing.three }}>
                         <ThemedText themeColor="textSecondary">R$</ThemedText>
@@ -589,20 +604,6 @@ export default function MaterialDetalheScreen() {
                         onChangeText={(v) => setNovoLotePrecoUnit(formatBRL(v))}
                       />
                     </View>
-                    {novoLoteQty && novoLotePrecoUnit ? (
-                      <View style={{ padding: Spacing.three, backgroundColor: theme.backgroundElement, borderRadius: Spacing.two, alignItems: 'center', marginTop: Spacing.two }}>
-                        <ThemedText type="small" themeColor="textSecondary">Total do lote</ThemedText>
-                        <ThemedText style={{ fontSize: 22, fontWeight: '700', color: theme.primary, marginTop: 4 }}>
-                          {formatCurrency(
-                            calcTotalFromPrice(
-                              parseFloat(novoLotePrecoUnit.replace(/\D/g, '')) / 100,
-                              parseFloat(novoLoteQty.replace(',', '.') || '0') || 0,
-                              novoLoteUnit,
-                            )
-                          )}
-                        </ThemedText>
-                      </View>
-                    ) : null}
                   </View>
 
                   {/* Fornecedor */}
@@ -659,63 +660,109 @@ export default function MaterialDetalheScreen() {
           style={[{ flex: 1, backgroundColor: theme.background }]}
         >
           <SafeAreaView style={{ flex: 1 }}>
-            <View style={styles.modalHeader}>
-              <ThemedText style={{ fontSize: 22, fontWeight: '700' }}>Editar Lote {editingLote?.codigo}</ThemedText>
-              <Pressable onPress={() => setEditLoteVisible(false)}>
-                <ThemedText themeColor="textSecondary">Cancelar</ThemedText>
-              </Pressable>
-            </View>
-
-            <ScrollView contentContainerStyle={styles.modalForm} keyboardShouldPersistTaps="handled">
-              <View style={styles.fieldGroup}>
-                <ThemedText type="smallBold" style={styles.fieldLabel}>Quantidade Atual</ThemedText>
-                <TextInput
-                  style={[styles.input, { color: theme.text, backgroundColor: theme.backgroundElement }]}
-                  placeholder="Qtd atual em estoque"
-                  placeholderTextColor={theme.textSecondary}
-                  keyboardType="decimal-pad"
-                  value={editLoteQty}
-                  onChangeText={setEditLoteQty}
-                />
-              </View>
-
-              <View style={styles.fieldGroup}>
-                <ThemedText type="smallBold" style={styles.fieldLabel}>Custo por {unidadeLabel}</ThemedText>
-                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.backgroundElement, borderRadius: Spacing.two, overflow: 'hidden' }}>
-                  <View style={{ paddingHorizontal: Spacing.three }}>
-                    <ThemedText themeColor="textSecondary">R$</ThemedText>
-                  </View>
-                  <TextInput
-                    style={{ flex: 1, height: 48, paddingHorizontal: Spacing.two, fontSize: 20, fontWeight: '700', color: theme.text }}
-                    placeholder="0,00"
-                    placeholderTextColor={theme.textSecondary}
-                    keyboardType="numeric"
-                    value={editLotePrecoUnit}
-                    onChangeText={(v) => setEditLotePrecoUnit(formatBRL(v))}
-                  />
+            {editUnitPickerVisible ? (
+              /* ── Seletor de unidade ── */
+              <View style={{ flex: 1 }}>
+                <View style={styles.modalHeader}>
+                  <ThemedText style={{ fontSize: 18, fontWeight: '700' }}>Unidade</ThemedText>
+                  <Pressable onPress={() => setEditUnitPickerVisible(false)}>
+                    <ThemedText themeColor="textSecondary">Voltar</ThemedText>
+                  </Pressable>
                 </View>
+                <ScrollView contentContainerStyle={{ padding: Spacing.three, gap: Spacing.two }}>
+                  {UNITS.map((u) => {
+                    const selected = editLoteUnit === u.code;
+                    return (
+                      <Pressable
+                        key={u.code}
+                        onPress={() => { setEditLoteUnit(u.code); setEditUnitPickerVisible(false); }}
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: Spacing.three,
+                          borderRadius: Spacing.two,
+                          borderWidth: 1,
+                          backgroundColor: selected ? theme.backgroundElement : theme.background,
+                          borderColor: selected ? theme.primary : 'rgba(128,128,128,0.2)',
+                        }}
+                      >
+                        <ThemedText style={{ color: selected ? theme.primary : theme.text }}>{u.label}</ThemedText>
+                        {selected && <Ionicons name="checkmark" size={18} color={theme.primary} />}
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
               </View>
+            ) : (
+              <>
+                <View style={styles.modalHeader}>
+                  <ThemedText style={{ fontSize: 22, fontWeight: '700' }}>Editar Lote {editingLote?.codigo}</ThemedText>
+                  <Pressable onPress={() => setEditLoteVisible(false)}>
+                    <ThemedText themeColor="textSecondary">Cancelar</ThemedText>
+                  </Pressable>
+                </View>
 
-              <View style={styles.fieldGroup}>
-                <ThemedText type="smallBold" style={styles.fieldLabel}>Observação</ThemedText>
-                <TextInput
-                  style={[styles.input, { color: theme.text, backgroundColor: theme.backgroundElement }]}
-                  placeholder="Observação opcional"
-                  placeholderTextColor={theme.textSecondary}
-                  value={editLoteObs}
-                  onChangeText={setEditLoteObs}
-                />
-              </View>
+                <ScrollView contentContainerStyle={styles.modalForm} keyboardShouldPersistTaps="handled">
+                  <View style={styles.fieldGroup}>
+                    <ThemedText type="smallBold" style={styles.fieldLabel}>Quantidade Atual</ThemedText>
+                    <View style={{ flexDirection: 'row', gap: Spacing.two }}>
+                      <TextInput
+                        style={[styles.input, { flex: 1, color: theme.text, backgroundColor: theme.backgroundElement }]}
+                        placeholder="Qtd atual em estoque"
+                        placeholderTextColor={theme.textSecondary}
+                        keyboardType="decimal-pad"
+                        value={editLoteQty}
+                        onChangeText={setEditLoteQty}
+                      />
+                      <Pressable
+                        onPress={() => setEditUnitPickerVisible(true)}
+                        style={{ height: 48, paddingHorizontal: Spacing.three, borderRadius: Spacing.two, borderWidth: 1, borderColor: theme.primary, alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <ThemedText style={{ color: theme.primary, fontWeight: '700', fontSize: 16 }}>{editLoteUnit}</ThemedText>
+                      </Pressable>
+                    </View>
+                  </View>
 
-              <Pressable
-                onPress={handleSaveEditLote}
-                style={[styles.saveButton, { backgroundColor: theme.primary }]}
-              >
-                <ThemedText style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>
-                  Salvar Alterações
-                </ThemedText>
-              </Pressable>
-            </ScrollView>
+                  <View style={styles.fieldGroup}>
+                    <ThemedText type="smallBold" style={styles.fieldLabel}>Valor total pago</ThemedText>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.backgroundElement, borderRadius: Spacing.two, overflow: 'hidden' }}>
+                      <View style={{ paddingHorizontal: Spacing.three }}>
+                        <ThemedText themeColor="textSecondary">R$</ThemedText>
+                      </View>
+                      <TextInput
+                        style={{ flex: 1, height: 48, paddingHorizontal: Spacing.two, fontSize: 20, fontWeight: '700', color: theme.text }}
+                        placeholder="0,00"
+                        placeholderTextColor={theme.textSecondary}
+                        keyboardType="numeric"
+                        value={editLotePrecoUnit}
+                        onChangeText={(v) => setEditLotePrecoUnit(formatBRL(v))}
+                      />
+                    </View>
+                  </View>
+
+                  <View style={styles.fieldGroup}>
+                    <ThemedText type="smallBold" style={styles.fieldLabel}>Observação</ThemedText>
+                    <TextInput
+                      style={[styles.input, { color: theme.text, backgroundColor: theme.backgroundElement }]}
+                      placeholder="Observação opcional"
+                      placeholderTextColor={theme.textSecondary}
+                      value={editLoteObs}
+                      onChangeText={setEditLoteObs}
+                    />
+                  </View>
+
+                  <Pressable
+                    onPress={handleSaveEditLote}
+                    style={[styles.saveButton, { backgroundColor: theme.primary }]}
+                  >
+                    <ThemedText style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>
+                      Salvar Alterações
+                    </ThemedText>
+                  </Pressable>
+                </ScrollView>
+              </>
+            )}
           </SafeAreaView>
         </KeyboardAvoidingView>
       </Modal>

@@ -71,9 +71,13 @@ export default function ProdutoDetalheScreen() {
       }
       const allLotes = await listAllLotesByProduct(p.id).catch(() => [])
       setLotes(allLotes.sort((a, b) => {
-        const d1 = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : new Date(a.createdAt as any).getTime();
-        const d2 = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : new Date(b.createdAt as any).getTime();
-        return d2 - d1;
+        const aAtivo = a.ativo && a.quantidadeAtual > 0;
+        const bAtivo = b.ativo && b.quantidadeAtual > 0;
+        if (aAtivo && !bAtivo) return -1;
+        if (!aAtivo && bAtivo) return 1;
+        const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : new Date(a.createdAt as any).getTime();
+        const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : new Date(b.createdAt as any).getTime();
+        return dateB - dateA;
       }))
     }
     setLoading(false)
@@ -347,6 +351,10 @@ export default function ProdutoDetalheScreen() {
 
           {(() => {
             const latestLote = lotes && lotes.length > 0 ? [...lotes].sort((a, b) => {
+              const aAtivo = a.ativo && a.quantidadeAtual > 0;
+              const bAtivo = b.ativo && b.quantidadeAtual > 0;
+              if (aAtivo && !bAtivo) return -1;
+              if (!aAtivo && bAtivo) return 1;
               const d1 = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : new Date(a.createdAt as any).getTime();
               const d2 = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : new Date(b.createdAt as any).getTime();
               return d2 - d1;
@@ -510,8 +518,7 @@ export default function ProdutoDetalheScreen() {
 
                       {/* Quantidade */}
                       <ThemedText type="small" themeColor="textSecondary">
-                        Qtd: <ThemedText style={{ fontWeight: '600', color: theme.text }}>{formatQuantity(lote.quantidadeAtual)}</ThemedText>{' '}
-                        / inicial: {formatQuantity(lote.quantidadeInicial)} {produto.unidade}
+                        Qtd produzida: <ThemedText style={{ fontWeight: '600', color: theme.text }}>{formatQuantity(lote.quantidadeInicial)} {produto.unidade}</ThemedText>
                       </ThemedText>
 
                       {/* Data de entrada */}

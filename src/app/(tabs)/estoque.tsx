@@ -113,7 +113,13 @@ export default function EstoqueScreen() {
       list = list.filter(p => isExpired(p))
     }
 
-    return list
+    return list.sort((a, b) => {
+      const aAvail = (a.estoqueAtual ?? 0) > 0;
+      const bAvail = (b.estoqueAtual ?? 0) > 0;
+      if (aAvail && !bAvail) return -1;
+      if (!aAvail && bAvail) return 1;
+      return a.nome.localeCompare(b.nome);
+    })
   }, [produtos, searchQuery, categoryFilter, stockFilter])
 
   const loadProdutos = useCallback(async () => {

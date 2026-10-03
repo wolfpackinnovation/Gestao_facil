@@ -270,11 +270,25 @@ export default function NovaVendaScreen() {
         saleId = await SaleService.createSaleWithItems(saleData, items);
       }
 
-      // Atualizar estoque simples
+      const { consumirEstoqueFEFO, listAllLotesByProduct } = await import('@/services/lote-service');
+      // Atualizar estoque via lotes
       for (const item of cart) {
         const product = products.find(p => p.id === item.productId)
         if (product) {
-          await saveProduto({ ...product, quantidade: (product.quantidade ?? 0) - item.quantity })
+          await consumirEstoqueFEFO(product.id, item.quantity, {
+            tipo: 'venda',
+            motivo: `Venda ${saleData.number}`,
+            userId: companyId,
+            referenciaTipo: 'venda',
+            referenciaId: saleId,
+          });
+
+          // Sincroniza o documento do produto com os lotes (quantidade e custo)
+          const lotesProd = await listAllLotesByProduct(product.id);
+          const ativos = lotesProd.filter(l => l.ativo && l.quantidadeAtual > 0);
+          const newQty = ativos.reduce((sum, l) => sum + l.quantidadeAtual, 0);
+          
+          await saveProduto({ ...product, quantidade: newQty });
         }
       }
 
@@ -324,9 +338,10 @@ export default function NovaVendaScreen() {
     }
   }
 
+  const availableProducts = products.filter((p) => (p.estoqueAtual ?? 0) > 0);
   const filteredProducts = productSearch
-    ? products.filter((p) => p.nome.toLowerCase().includes(productSearch.toLowerCase()))
-    : products;
+    ? availableProducts.filter((p) => p.nome.toLowerCase().includes(productSearch.toLowerCase()))
+    : availableProducts;
 
   return (
     <ThemedView style={styles.container}>
@@ -542,14 +557,10 @@ export default function NovaVendaScreen() {
                   style={[styles.productPickerItem, (item.estoqueAtual ?? 0) <= 0 && { opacity: 0.6 }]}
                 >
                   <ThemedView style={{ flex: 1 }}>
-                    <ThemedText style={{ fontWeight: '600', color: (item.estoqueAtual ?? 0) <= 0 ? '#9CA3AF' : theme.text }}>{item.nome}</ThemedText>
-                    {(item.estoqueAtual ?? 0) <= 0 ? (
-                      <ThemedText type="small" style={{ color: '#ef4444', fontWeight: '600' }}>Produto indisponível</ThemedText>
-                    ) : (
-                      <ThemedText type="small" themeColor="textSecondary">
-                        {item.unidade} - Estoque: {item.estoqueAtual}
-                      </ThemedText>
-                    )}
+                    <ThemedText style={{ fontWeight: '600', color: theme.text }}>{item.nome}</ThemedText>
+                    <ThemedText type="small" themeColor="textSecondary">
+                      {item.unidade} - Estoque: {item.estoqueAtual}
+                    </ThemedText>
                   </ThemedView>
                   <ThemedText style={{ fontWeight: '700' }}>{formatCurrency(item.precoVenda)}</ThemedText>
                 </Pressable>
@@ -825,7 +836,7 @@ const styles = StyleSheet.create({
   quantityOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   quantitySheet: { borderTopLeftRadius: Spacing.four, borderTopRightRadius: Spacing.four, padding: Spacing.four, minHeight: Dimensions.get('screen').height * 0.55 },
   pickerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  pickerSheet: { borderTopLeftRadius: Spacing.four, borderTopRightRadius: Spacing.four, paddingTop: Spacing.three, paddingHorizontal: Spacing.four, paddingBottom: Spacing.six, minHeight: Dimensions.get('screen').height * 0.6 },
+  pickerSheet: { borderTopLeftRadius: Spacing.four, borderTopRightRadius: Spacing.four, paddingTop: Spacing.three, paddingHorizontal: Spacing.four, paddingBottom: Spacing.six, minHeight: Dimensions.get('screen').height * 0.6, maxHeight: '85%' },
   pickerHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.three },
   pickerSearchInput: { borderRadius: Spacing.two, paddingHorizontal: Spacing.three, paddingVertical: Platform.OS === 'ios' ? Spacing.three : Spacing.two, fontSize: 16, marginBottom: Spacing.three },
   quantityStockRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.three },
